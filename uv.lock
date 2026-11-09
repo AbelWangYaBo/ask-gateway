@@ -66,6 +66,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "anyio" },
     { name = "deepseek-harness-sdk" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -89,6 +90,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.20.1" },
+    { name = "anyio", specifier = ">=4.16.0" },
     { name = "deepseek-harness-sdk", specifier = "==0.2.1rc2" },
     { name = "fastapi", specifier = ">=0.162.2" },
     { name = "httpx", specifier = ">=0.28.1" },

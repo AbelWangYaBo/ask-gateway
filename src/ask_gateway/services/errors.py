@@ -42,3 +42,42 @@ class PricingConflictError(ServiceError):
 
     def __init__(self, message: str) -> None:
         super().__init__("pricing_conflict", message)
+
+
+class ModelNotAllowedError(ServiceError):
+    http_status = 400
+
+    def __init__(self, model: str) -> None:
+        super().__init__("model_not_allowed", f"model {model!r} is not in the allowlist")
+
+
+class PoolBusyError(ServiceError):
+    """池队列满或等待超时 → 429，审计行记 rate_limited。"""
+
+    http_status = 429
+
+    def __init__(self, message: str) -> None:
+        super().__init__("pool_busy", message)
+
+
+class ShuttingDownError(ServiceError):
+    http_status = 503
+
+    def __init__(self) -> None:
+        super().__init__("shutting_down", "gateway is shutting down")
+
+
+class UpstreamError(ServiceError):
+    """DSH 协议/进程类失败，句柄可复用或已回收 → 502。"""
+
+    http_status = 502
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(code, message)
+
+
+class UpstreamTimeoutError(ServiceError):
+    http_status = 504
+
+    def __init__(self, message: str) -> None:
+        super().__init__("upstream_timeout", message)

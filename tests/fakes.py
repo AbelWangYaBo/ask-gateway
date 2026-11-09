@@ -86,3 +86,17 @@ class FakeRunnerFactory:
     @property
     def created_count(self) -> int:
         return len(self.runners)
+
+    def configure(
+        self,
+        *,
+        scripted_events: list[dict] | None = None,
+        raise_exc: Exception | None = None,
+    ) -> None:
+        """切换后续新建 runner 的脚本与故障（已创建的 runner 不受影响）。
+
+        显式传参才覆盖；raise_exc 默认 None 同时承担"清除故障"语义。
+        """
+        if scripted_events is not None:
+            self._scripted_events = scripted_events
+        self._raise_exc = raise_exc

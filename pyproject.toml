@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",
+    "anyio>=4.16.0",
     "deepseek-harness-sdk==0.2.1rc2",
     "fastapi>=0.162.2",
     "httpx>=0.28.1",
