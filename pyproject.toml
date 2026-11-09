@@ -43,3 +43,10 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff.lint]
+# 显式钉住规则集：E(pycodestyle) + F(pyflakes) + I(import 排序)
+# 不依赖 ruff 版本默认，避免小版本升级变成无评审的规则扩面
+select = ["E", "F", "I"]
+ignore = ["E501"]
