@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ask-gateway = "ask_gateway:main"
+ask-gateway = "ask_gateway.main:main"
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"

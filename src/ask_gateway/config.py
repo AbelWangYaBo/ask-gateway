@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     )
 
     # ---- 基础 ----
+    host: str = Field(default="127.0.0.1", description="绑定地址；默认仅本机，暴露局域网需显式覆盖")
+    port: int = Field(default=8000)
     data_dir: Path = Field(default=Path("data"), description="运行数据根目录")
     log_level: str = Field(default="INFO")
     log_json: bool = Field(default=True, description="生产 JSON 日志，本地开发可关")
@@ -52,6 +54,9 @@ class Settings(BaseSettings):
     upstream_circuit_break_seconds: float = Field(default=300.0)
     shutdown_grace_seconds: float = Field(default=45.0)
     request_timeout_seconds: float | None = Field(default=None)
+    dsh_initialize_timeout_seconds: float = Field(
+        default=60.0, description="DSH 子进程冷启动与握手上限"
+    )
 
     # ---- 本平台 Key 的默认配额（NULL 时落到这里）----
     default_rpm: int = Field(default=30)

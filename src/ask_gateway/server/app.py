@@ -1,11 +1,14 @@
 """FastAPI 应用工厂：依赖装配、统一错误信封。
 
-生命周期（池预热、优雅关停）与静态托管在后续阶段接入，本工厂承载对外 API 与管理面。
+lifespan（池预热、优雅关停）由入口 main.py 注入；SPA 静态托管也在入口挂载，
+本工厂只承载对外 API、管理面与统一错误信封。
 """
 
 from __future__ import annotations
 
+import contextlib
 import uuid
+from collections.abc import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -17,14 +20,18 @@ from ask_gateway.apis.v1 import router as v1_router
 from ask_gateway.services.chat_service import ChatRuntime
 from ask_gateway.services.errors import ServiceError
 
+# 本机裁剪版 CPython 的 collections.abc 无 AsyncContextManager，与 Starlette 一样走 contextlib
+Lifespan = Callable[[FastAPI], contextlib.AbstractAsyncContextManager[None]]
+
 
 def create_app(
     *,
     chat_runtime: ChatRuntime,
     admin_password: str = "",
     admin_session_ttl_hours: int = 12,
+    lifespan: Lifespan | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="ask-gateway", version="0.1.0")
+    app = FastAPI(title="ask-gateway", version="0.1.0", lifespan=lifespan)
     app.state.chat_runtime = chat_runtime
     app.state.admin_config = AdminConfig(
         admin_password=admin_password,
