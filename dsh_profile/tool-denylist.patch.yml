@@ -1,0 +1,35 @@
+# ask-gateway 的 DSH 工具面裁剪层。
+#
+# 基线 profile 是运行时随包发布的 sdk 模板（dsh-base + dsh-sdk-app 两个 bundle），
+# 本 patch 在所有 bundle 层之后按插件 id 覆盖，把问答/联网搜索之外的工具面全部禁用。
+# 构建脚本 dsh_profile/build_profile.py 会把本文件写入每个 DSH_HOME 的
+# profiles/ask-gateway/cordis.patch.yml，随 --profile ask-gateway 启动生效。
+#
+# 禁用口径（与 tests/test_dsh_profile_surface.py 的断言一一对应）：
+#   shell：tool-bash / tool-pwsh
+#   文件系统：tool-fs / tool-fs-search
+#   技能：tool-skill
+#   子代理：tool-subagent-control / tool-subagent-list-agents /
+#          tool-subagent / tool-subagent-fork
+#   工作流：tool-workflow
+# 保留：tool-web（联网搜索 + 网页抓取）及全部问答/会话/计量基础设施。
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-workflow
+  disabled: true

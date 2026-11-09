@@ -1,0 +1,58 @@
+# 部署编排：app（FastAPI + DSH runtime）+ postgres:16。
+# 前置步骤（人工一次性命令，entrypoint 不代跑）：
+#   cp .env.example .env 并填好 ADMIN_PASSWORD / UPSTREAM_KEYS / POSTGRES_PASSWORD
+#   docker compose run --rm app uv run alembic upgrade head
+#   docker compose run --rm app uv run python dsh_profile/build_profile.py
+#   docker compose up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ask}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?在 .env 中设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-ask_gateway}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-ask} -d ${POSTGRES_DB:-ask_gateway}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    # required:false 让 `docker compose config` 等无密钥校验可跑；
+    # 真正的 fail-fast 由下方 POSTGRES_PASSWORD 的 :? 替换守卫与应用配置承担
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # 容器内必须绑 0.0.0.0；对宿主机的暴露由 ports 决定，默认只映射回环
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ask}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ask_gateway}
+    volumes:
+      - dsh_homes:/data/dsh/homes
+      - dsh_workspaces:/data/dsh/workspaces
+      - dsh_sessions:/data/dsh/sessions
+    ports:
+      # 默认仅本机可访问；需要对外时改成 "0.0.0.0:8000:8000" 并自行加网关/令牌管控
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  dsh_homes:
+  dsh_workspaces:
+  dsh_sessions:
