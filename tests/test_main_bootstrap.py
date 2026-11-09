@@ -6,10 +6,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from ask_gateway import main as main_module
 from ask_gateway.config import Settings, get_settings
 from ask_gateway.db import session as db_session
 from ask_gateway.db.base import Base
@@ -51,7 +53,11 @@ def test_factory_with_upstream_key_builds_without_spawn(tmp_path) -> None:
     assert runner.health_alive() is False
 
 
-def test_application_lifespan_routes_and_shutdown(bootstrap_settings: Settings) -> None:
+def test_application_lifespan_routes_and_shutdown(
+    bootstrap_settings: Settings, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # 仓库里提交了构建产物；这里显式模拟 dist 缺失以覆盖跳过挂载分支
+    monkeypatch.setattr(main_module, "_STATIC_DIST", tmp_path / "no-such-dist")
     app = create_application(bootstrap_settings)
     pool = app.state.chat_runtime.pool
     assert pool._reaper_thread is None
@@ -75,3 +81,27 @@ def test_application_lifespan_routes_and_shutdown(bootstrap_settings: Settings) 
 
     # 优雅关停后 reaper 退出
     assert pool._reaper_thread is not None and not pool._reaper_thread.is_alive()
+
+
+def test_spa_mounted_with_index_fallback(
+    bootstrap_settings: Settings, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<title>spa-shell</title>", encoding="utf-8")
+    monkeypatch.setattr(main_module, "_STATIC_DIST", dist)
+
+    app = create_application(bootstrap_settings)
+    with TestClient(app) as client:
+        root = client.get("/")
+        assert root.status_code == 200
+        assert "spa-shell" in root.text
+
+        # 前端深层路由由 index.html 兜底
+        deep = client.get("/requests")
+        assert deep.status_code == 200
+        assert deep.text == root.text
+
+        # API 路由优先于 SPA 挂载，不会被兜底吞掉
+        assert client.get("/healthz").status_code == 200
+        assert client.get("/admin/keys").status_code == 401

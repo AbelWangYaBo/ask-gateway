@@ -4,4 +4,6 @@ __pycache__/
 *.pyc
 node_modules/
 dist/
+# 前端构建产物随源码提交，由 FastAPI 作为 SPA 静态目录托管
+!src/ask_gateway/server/static/dist/
 .env
