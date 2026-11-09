@@ -10,6 +10,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from ask_gateway.db.base import json_dumps_utf8
 from ask_gateway.models import Base
 
 
@@ -21,6 +22,7 @@ def engine() -> Iterator[Engine]:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
         future=True,
+        json_serializer=json_dumps_utf8,
     )
     Base.metadata.create_all(eng)
     yield eng

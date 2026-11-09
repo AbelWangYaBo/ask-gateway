@@ -21,6 +21,13 @@ class KeyNotFoundError(ServiceError):
         super().__init__("key_not_found", message)
 
 
+class RequestNotFoundError(ServiceError):
+    http_status = 404
+
+    def __init__(self, request_id: str) -> None:
+        super().__init__("request_not_found", f"request {request_id} not found")
+
+
 class QuotaError(ServiceError):
     """配额拒绝。code 取值：rpm_exceeded / concurrency_exceeded / daily_budget_exceeded。"""
 

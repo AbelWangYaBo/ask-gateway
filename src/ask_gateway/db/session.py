@@ -9,6 +9,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from ask_gateway.config import get_settings
+from ask_gateway.db.base import json_dumps_utf8
 
 _engine: Engine | None = None
 _SessionLocal: sessionmaker[Session] | None = None
@@ -17,9 +18,18 @@ _SessionLocal: sessionmaker[Session] | None = None
 def _engine_kwargs(url: str) -> dict:
     if url.startswith("sqlite"):
         # sqlite 需要 check_same_thread=False 才能跨线程池使用
-        return {"connect_args": {"check_same_thread": False}, "future": True}
+        return {
+            "connect_args": {"check_same_thread": False},
+            "future": True,
+            "json_serializer": json_dumps_utf8,
+        }
     # pg 连接池默认 QueuePool；池大小与 runtime 池解耦，给管理面留余量
-    return {"pool_size": 10, "max_overflow": 20, "future": True}
+    return {
+        "pool_size": 10,
+        "max_overflow": 20,
+        "future": True,
+        "json_serializer": json_dumps_utf8,
+    }
 
 
 def get_engine() -> Engine:

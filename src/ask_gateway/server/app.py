@@ -1,6 +1,6 @@
 """FastAPI 应用工厂：依赖装配、统一错误信封。
 
-生命周期（池预热、优雅关停）与管理面/静态托管在后续阶段接入，本工厂先承载对外 API。
+生命周期（池预热、优雅关停）与静态托管在后续阶段接入，本工厂承载对外 API 与管理面。
 """
 
 from __future__ import annotations
@@ -11,15 +11,27 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from ask_gateway.apis.admin import AdminConfig
+from ask_gateway.apis.admin import router as admin_router
 from ask_gateway.apis.v1 import router as v1_router
 from ask_gateway.services.chat_service import ChatRuntime
 from ask_gateway.services.errors import ServiceError
 
 
-def create_app(*, chat_runtime: ChatRuntime) -> FastAPI:
+def create_app(
+    *,
+    chat_runtime: ChatRuntime,
+    admin_password: str = "",
+    admin_session_ttl_hours: int = 12,
+) -> FastAPI:
     app = FastAPI(title="ask-gateway", version="0.1.0")
     app.state.chat_runtime = chat_runtime
+    app.state.admin_config = AdminConfig(
+        admin_password=admin_password,
+        session_ttl_hours=admin_session_ttl_hours,
+    )
     app.include_router(v1_router)
+    app.include_router(admin_router)
 
     @app.exception_handler(ServiceError)
     async def _service_error(request: Request, exc: ServiceError) -> JSONResponse:

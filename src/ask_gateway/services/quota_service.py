@@ -117,7 +117,7 @@ class QuotaService:
         *,
         now: datetime | None = None,
     ) -> Decimal:
-        start_utc, end_utc = _beijing_day_bounds_utc(now or datetime.now(UTC))
+        start_utc, end_utc = beijing_day_bounds_utc(now or datetime.now(UTC))
         total = session.scalar(
             select(func.coalesce(func.sum(RequestRecord.total_cost_cents), 0)).where(
                 RequestRecord.api_key_id == key_id,
@@ -128,7 +128,7 @@ class QuotaService:
         return Decimal(total)  # type: ignore[arg-type]
 
 
-def _beijing_day_bounds_utc(now: datetime) -> tuple[datetime, datetime]:
+def beijing_day_bounds_utc(now: datetime) -> tuple[datetime, datetime]:
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
     beijing_now = now.astimezone(BEIJING_TZ)

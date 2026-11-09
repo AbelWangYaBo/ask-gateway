@@ -16,6 +16,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from ask_gateway.db.base import json_dumps_utf8
 from ask_gateway.db.session import session_scope
 from ask_gateway.models import Base
 from ask_gateway.models.api_key import ApiKey
@@ -120,7 +121,11 @@ def _seed_pricing(session: Session, model: str = MODEL) -> PricingRule:
 def db_engine(tmp_path) -> Iterator[Engine]:
     # 文件库 + 默认连接池：管线工作线程与请求级依赖各持独立连接，
     # 复刻生产 PG 的多连接语义（StaticPool 单连接会让 session 关闭互相回滚）
-    eng = create_engine(f"sqlite:///{tmp_path}/chat.db", future=True)
+    eng = create_engine(
+        f"sqlite:///{tmp_path}/chat.db",
+        future=True,
+        json_serializer=json_dumps_utf8,
+    )
     Base.metadata.create_all(eng)
     yield eng
     eng.dispose()
