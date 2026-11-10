@@ -77,6 +77,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/portal/PortalDashboardView.vue'),
       },
       {
+        path: 'chat',
+        name: 'portal-chat',
+        meta: { public: true, title: '对话' },
+        component: () => import('@/views/portal/PortalChatView.vue'),
+      },
+      {
         path: 'requests',
         name: 'portal-requests',
         meta: { public: true, title: '请求记录' },

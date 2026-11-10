@@ -6,6 +6,9 @@
         <el-menu-item index="/portal/dashboard">
           <el-icon><DataBoard /></el-icon>我的概览
         </el-menu-item>
+        <el-menu-item index="/portal/chat">
+          <el-icon><ChatDotRound /></el-icon>对话
+        </el-menu-item>
         <el-menu-item index="/portal/requests">
           <el-icon><Search /></el-icon>请求记录
         </el-menu-item>
