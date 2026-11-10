@@ -197,3 +197,19 @@ export interface Dashboard {
   active_keys: number
   status_distribution: Record<string, number>
 }
+
+export interface UpstreamKey {
+  id: string
+  label: string
+  key_fingerprint: string
+  key_preview: string
+  is_active: boolean
+  notes: string | null
+  created_at: string
+}
+
+export interface UpstreamKeyPayload {
+  label: string
+  plaintext: string
+  notes?: string | null
+}

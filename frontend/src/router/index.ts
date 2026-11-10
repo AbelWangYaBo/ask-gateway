@@ -21,6 +21,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '看板' },
       },
       {
+        path: 'upstream-keys',
+        name: 'upstream-keys',
+        meta: { requiresAuth: true },
+        component: () => import('@/views/UpstreamKeysView.vue'),
+      },
+      {
         path: 'keys',
         name: 'keys',
         component: () => import('@/views/KeysView.vue'),

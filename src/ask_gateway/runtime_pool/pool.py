@@ -172,15 +172,58 @@ class RuntimePool:
                 to_close.append(handle)
                 self._record_failure_locked(handle.label)
             else:
-                handle.state = "idle"
-                handle.last_used_at = self.clock()
-                group = self._groups[handle.label]
-                group.fail_streak = 0
-                group.open_until = 0.0
-                self._idle.append(handle)
+                if handle.label not in self._labels:
+                    # reconfigure 移除的组：归还即回收，不再回到空闲栈
+                    handle.state = "broken"
+                    self._all.discard(handle)
+                    self._remove_idle_locked(handle)
+                    to_close.append(handle)
+                else:
+                    handle.state = "idle"
+                    handle.last_used_at = self.clock()
+                    group = self._groups[handle.label]
+                    group.fail_streak = 0
+                    group.open_until = 0.0
+                    self._idle.append(handle)
             self._lock.notify_all()
         for dead in to_close:
             self._safe_close(dead)
+
+    def reconfigure(self, labels: list[str]) -> None:
+        """管理端增删上游 Key 后即时调整分组，不重启服务。
+
+        新增组：纳入轮询，随下次预热/懒扩容自然起实例；
+        移除组：空闲实例立即回收，在途实例归还时回收，熔断状态清零。
+        """
+        removed: list[RuntimeHandle] = []
+        with self._lock:
+            if self._closing:
+                return
+            new_set = list(dict.fromkeys(labels))
+            old_set = set(self._labels)
+            for label in new_set:
+                if label not in old_set:
+                    self._labels.append(label)
+                    group = self._groups.setdefault(label, _GroupState())
+                    group.fail_streak = 0
+                    group.open_until = 0.0
+            dropped = old_set - set(new_set)
+            if dropped:
+                self._labels = [lbl for lbl in self._labels if lbl not in dropped]
+                survivors: list[RuntimeHandle] = []
+                while self._idle:
+                    handle = self._idle.popleft()
+                    if handle.label in dropped:
+                        handle.state = "broken"
+                        self._all.discard(handle)
+                        removed.append(handle)
+                    else:
+                        survivors.append(handle)
+                for handle in reversed(survivors):
+                    self._idle.append(handle)
+                self._rr_cursor = 0
+        for handle in removed:
+            self._safe_close(handle)
 
     # ---------- 回收 ----------
 

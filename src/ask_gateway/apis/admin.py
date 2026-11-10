@@ -12,7 +12,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from ask_gateway.db.session import session_scope
@@ -32,12 +32,15 @@ from ask_gateway.schemas.admin import (
     RequestDetailOut,
     RequestListItem,
     RequestPage,
+    UpstreamKeyCreateRequest,
+    UpstreamKeyOut,
+    UpstreamKeyUpdateRequest,
     UsageChart,
     UsageChartSeries,
     UsageSummaryOut,
     UsageSummaryRow,
 )
-from ask_gateway.services import admin_auth, admin_service
+from ask_gateway.services import admin_auth, admin_service, upstream_key_service
 from ask_gateway.services.admin_service import RequestFilters
 from ask_gateway.services.errors import AuthError
 
@@ -337,3 +340,89 @@ def list_audit_logs(
 )
 def dashboard(session: Session = Depends(session_scope)) -> DashboardOut:
     return DashboardOut(**dataclasses.asdict(admin_service.dashboard(session)))
+
+
+# ---- 上游 Key 管理（增删改即时生效，不重启服务） ----
+
+
+def _reconcile_pool(request: Request) -> None:
+    """CRUD 后按 DB 现状重配池分组；池未挂载（测试环境）时跳过。"""
+    control = getattr(request.app.state, "upstream_control", None)
+    pool = getattr(request.app.state, "pool", None)
+    if control is None or pool is None:
+        return
+    control.reconcile_pool(pool)
+
+
+@router.get(
+    "/admin/upstream-keys",
+    response_model=list[UpstreamKeyOut],
+    dependencies=[Depends(require_admin)],
+)
+def list_upstream_keys(session: Session = Depends(session_scope)) -> list[UpstreamKeyOut]:
+    return [UpstreamKeyOut.model_validate(r) for r in upstream_key_service.list_upstream_keys(session)]
+
+
+@router.post(
+    "/admin/upstream-keys",
+    response_model=UpstreamKeyOut,
+    status_code=201,
+    dependencies=[Depends(require_admin)],
+)
+def create_upstream_key(
+    payload: UpstreamKeyCreateRequest,
+    request: Request,
+    session: Session = Depends(session_scope),
+) -> UpstreamKeyOut:
+    control = request.app.state.upstream_control
+    row = upstream_key_service.create_upstream_key(
+        session,
+        control.box,
+        label=payload.label,
+        plaintext=payload.plaintext,
+        notes=payload.notes,
+        client_ip=_client_ip(request),
+    )
+    session.commit()
+    _reconcile_pool(request)
+    return UpstreamKeyOut.model_validate(row)
+
+
+@router.patch(
+    "/admin/upstream-keys/{key_id}",
+    response_model=UpstreamKeyOut,
+    dependencies=[Depends(require_admin)],
+)
+def update_upstream_key(
+    key_id: UUID,
+    payload: UpstreamKeyUpdateRequest,
+    request: Request,
+    session: Session = Depends(session_scope),
+) -> UpstreamKeyOut:
+    row = upstream_key_service.update_upstream_key(
+        session,
+        key_id,
+        label=payload.label,
+        notes=payload.notes,
+        is_active=payload.is_active,
+        client_ip=_client_ip(request),
+    )
+    session.commit()
+    _reconcile_pool(request)
+    return UpstreamKeyOut.model_validate(row)
+
+
+@router.delete(
+    "/admin/upstream-keys/{key_id}",
+    status_code=204,
+    dependencies=[Depends(require_admin)],
+)
+def delete_upstream_key(
+    key_id: UUID,
+    request: Request,
+    session: Session = Depends(session_scope),
+) -> Response:
+    upstream_key_service.delete_upstream_key(session, key_id, client_ip=_client_ip(request))
+    session.commit()
+    _reconcile_pool(request)
+    return Response(status_code=204)

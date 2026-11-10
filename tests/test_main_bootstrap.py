@@ -15,8 +15,14 @@ from ask_gateway import main as main_module
 from ask_gateway.config import Settings, get_settings
 from ask_gateway.db import session as db_session
 from ask_gateway.db.base import Base
-from ask_gateway.main import build_runner_factory, create_application
+from ask_gateway.main import (
+    UpstreamControl,
+    bootstrap_upstream_keys,
+    create_application,
+)
 from ask_gateway.runtime_pool.dsh_runner import DshRunner
+from ask_gateway.services import upstream_key_service
+from ask_gateway.services.secret_box import SecretBox
 
 
 @pytest.fixture
@@ -34,21 +40,37 @@ def bootstrap_settings(tmp_path, monkeypatch) -> Iterator[Settings]:
     get_settings.cache_clear()
 
 
-def test_factory_without_upstream_keys(bootstrap_settings: Settings) -> None:
-    factory, labels = build_runner_factory(bootstrap_settings)
-    assert labels == ["upstream-unconfigured"]
-    with pytest.raises(RuntimeError, match="UPSTREAM_KEYS"):
-        factory("upstream-unconfigured")
+def test_bootstrap_without_upstream_keys(bootstrap_settings: Settings) -> None:
+    session_factory = db_session.get_session_factory()
+    box = SecretBox(b"x" * 32)
+    labels = bootstrap_upstream_keys(bootstrap_settings, session_factory, box)
+    assert labels == []
+    control = UpstreamControl(
+        settings=bootstrap_settings, session_factory=session_factory, box=box
+    )
+    with pytest.raises(RuntimeError, match="上游 Key 不可用"):
+        control.runner_factory("upstream-unconfigured")
 
 
-def test_factory_with_upstream_key_builds_without_spawn(tmp_path) -> None:
-    settings = Settings(upstream_keys=["sk-fake-1"], data_dir=tmp_path)
-    factory, labels = build_runner_factory(settings)
-    assert labels == ["upstream-1"]
+def test_factory_with_upstream_key_builds_without_spawn(
+    bootstrap_settings: Settings,
+) -> None:
+    session_factory = db_session.get_session_factory()
+    box = SecretBox(b"x" * 32)
+    with session_factory() as session:
+        row = upstream_key_service.create_upstream_key(
+            session, box, label="k1", plaintext="sk-fake-upstream-1"
+        )
+        session.commit()
+        label = row.pool_label
 
-    runner = factory("upstream-1")
+    control = UpstreamControl(
+        settings=bootstrap_settings, session_factory=session_factory, box=box
+    )
+    runner = control.runner_factory(label)
     assert isinstance(runner, DshRunner)
-    assert runner.upstream_key_label == "upstream-1"
+    assert runner.upstream_key_label == label
+    assert runner._config.upstream_key == "sk-fake-upstream-1"
     # 构造不等于启动：未进入池 start() 前不得有存活子进程
     assert runner.health_alive() is False
 

@@ -81,10 +81,26 @@ def test_api_key_hash_unique(db_session: Session) -> None:
     db_session.rollback()
 
 
-def test_upstream_key_unique_env_var(db_session: Session) -> None:
-    db_session.add(UpstreamKey(env_var_name="DSH_UPSTREAM_KEY_1", label="主 Key"))
+def test_upstream_key_fingerprint_unique(db_session: Session) -> None:
+    from ask_gateway.services.secret_box import SecretBox
+
+    box = SecretBox(b"m" * 32)
+    plain = "sk-model-test-upstream"
+    row = UpstreamKey(
+        label="主 Key",
+        key_ciphertext=box.encrypt(plain),
+        key_fingerprint=SecretBox.fingerprint(plain),
+        key_preview=SecretBox.preview(plain),
+    )
+    db_session.add(row)
     db_session.flush()
-    db_session.add(UpstreamKey(env_var_name="DSH_UPSTREAM_KEY_1", label="重复"))
+    dup = UpstreamKey(
+        label="重复",
+        key_ciphertext=box.encrypt(plain),
+        key_fingerprint=SecretBox.fingerprint(plain),
+        key_preview=SecretBox.preview(plain),
+    )
+    db_session.add(dup)
     with pytest.raises(IntegrityError):
         db_session.flush()
 

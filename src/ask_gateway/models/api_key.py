@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Uuid
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ask_gateway.db.base import Base, TimestampMixin
@@ -36,12 +36,28 @@ class ApiKey(Base, TimestampMixin):
 
 
 class UpstreamKey(Base, TimestampMixin):
-    """上游 Key 池元数据。明文密钥只存在于环境变量，表里只存变量引用。"""
+    """上游 DeepSeek Key 池：AES-GCM 密文入库，指纹与 preview 供明文比对。
+
+    池组目录名由 id 派生（upstream-<hex8>），新增/删除 Key 即时生效不重启。
+    """
 
     __tablename__ = "upstream_keys"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    env_var_name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     label: Mapped[str] = mapped_column(String(64), nullable=False)
+    # AES-GCM 密文（base64(nonce+ciphertext)），解密只发生在注入 DSH 子进程前
+    key_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    # SHA-256 前 16 hex：创建查重 + 与上游平台侧肉眼/脚本比对
+    key_fingerprint: Mapped[str] = mapped_column(String(16), unique=True, nullable=False, index=True)
+    # 展示形态（sk-abc1…wxyz）
+    key_preview: Mapped[str] = mapped_column(String(32), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    @property
+    def pool_label(self) -> str:
+        return f"upstream-{self.id.hex[:8]}"
+
+    @staticmethod
+    def pool_label_of(key_id: uuid.UUID) -> str:
+        return f"upstream-{key_id.hex[:8]}"

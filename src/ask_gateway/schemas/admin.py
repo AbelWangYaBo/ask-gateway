@@ -254,3 +254,30 @@ class DashboardOut(BaseModel):
     today_cost_cents: Decimal
     active_keys: int
     status_distribution: dict[str, int]
+
+
+# ---- 上游 Key 管理 ----
+
+
+class UpstreamKeyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    label: str
+    key_fingerprint: str
+    key_preview: str
+    is_active: bool
+    notes: str | None
+    created_at: datetime
+
+
+class UpstreamKeyCreateRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=64)
+    plaintext: str = Field(min_length=8, max_length=512)
+    notes: str | None = None
+
+
+class UpstreamKeyUpdateRequest(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=64)
+    notes: str | None = Field(default=None, max_length=512)
+    is_active: bool | None = None

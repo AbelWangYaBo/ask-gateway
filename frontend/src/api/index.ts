@@ -12,6 +12,8 @@ import type {
   RequestDetail,
   RequestFilters,
   RequestPage,
+  UpstreamKey,
+  UpstreamKeyPayload,
   UsageSummary,
 } from './types'
 
@@ -102,5 +104,22 @@ export const auditLogApi = {
 export const dashboardApi = {
   get(): Promise<Dashboard> {
     return http.get('/admin/dashboard').then((r) => r.data)
+  },
+}
+
+// ---- 上游 Key 管理 ----
+
+export const upstreamKeysApi = {
+  list(): Promise<UpstreamKey[]> {
+    return http.get('/admin/upstream-keys').then((r) => r.data)
+  },
+  create(payload: UpstreamKeyPayload): Promise<UpstreamKey> {
+    return http.post('/admin/upstream-keys', payload).then((r) => r.data)
+  },
+  update(keyId: string, payload: Partial<UpstreamKeyPayload> & { is_active?: boolean }): Promise<UpstreamKey> {
+    return http.patch(`/admin/upstream-keys/${keyId}`, payload).then((r) => r.data)
+  },
+  remove(keyId: string): Promise<void> {
+    return http.delete(`/admin/upstream-keys/${keyId}`).then(() => undefined)
   },
 }

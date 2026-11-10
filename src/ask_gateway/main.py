@@ -7,12 +7,14 @@ lifespan 只承载常驻职责：建目录、池预热与 reaper、优雅关停�
 from __future__ import annotations
 
 import contextlib
-from collections.abc import AsyncIterator, Callable
+import dataclasses
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.types import Scope
@@ -24,8 +26,10 @@ from ask_gateway.runtime_pool.dsh_runner import DshRunner, DshRunnerConfig
 from ask_gateway.runtime_pool.pool import RuntimePool
 from ask_gateway.runtime_pool.runner import Runner
 from ask_gateway.server.app import create_app
+from ask_gateway.services import upstream_key_service
 from ask_gateway.services.chat_service import ChatRuntime
 from ask_gateway.services.quota_service import QuotaService
+from ask_gateway.services.secret_box import SecretBox, build_secret_box
 
 log = get_logger(component="bootstrap")
 
@@ -44,22 +48,29 @@ class SPAMount(StaticFiles):
             raise
 
 
-def build_runner_factory(settings: Settings) -> tuple[Callable[[str], Runner], list[str]]:
-    """上游 Key 按序号生成 label；明文只在闭包里，不入库不入日志。"""
-    if settings.upstream_keys:
-        labels = [f"upstream-{i + 1}" for i in range(len(settings.upstream_keys))]
-        key_by_label = dict(zip(labels, settings.upstream_keys, strict=True))
-    else:
-        # 允许无 Key 启动：管理面/健康检查可用，借池时给出明确配置错误
-        log.warning("UPSTREAM_KEYS 未配置：管理面可用，问答请求将在 runtime 启动时失败")
-        labels = ["upstream-unconfigured"]
-        key_by_label = {}
+@dataclasses.dataclass(frozen=True, slots=True)
+class UpstreamControl:
+    """管理端调整上游 Key 后重建池分组所需的全部句柄。"""
 
-    def factory(label: str) -> Runner:
-        try:
-            upstream_key = key_by_label[label]
-        except KeyError as exc:
-            raise RuntimeError("UPSTREAM_KEYS 未配置，无法启动 DSH runtime") from exc
+    settings: Settings
+    session_factory: sessionmaker
+    box: SecretBox
+
+    def active_labels(self) -> list[str]:
+        with self.session_factory() as session:
+            return upstream_key_service.active_pool_labels(session)
+
+    def reconcile_pool(self, pool: RuntimePool) -> list[str]:
+        labels = self.active_labels()
+        pool.reconfigure(labels)
+        return labels
+
+    def runner_factory(self, label: str) -> Runner:
+        settings = self.settings
+        with self.session_factory() as session:
+            upstream_key = upstream_key_service.plaintext_for_label(session, self.box, label)
+        if upstream_key is None:
+            raise RuntimeError(f"上游 Key 不可用（label={label}）：未配置或已停用")
         return DshRunner(
             DshRunnerConfig(
                 upstream_key_label=label,
@@ -77,19 +88,35 @@ def build_runner_factory(settings: Settings) -> tuple[Callable[[str], Runner], l
             )
         )
 
-    return factory, labels
+
+def bootstrap_upstream_keys(
+    settings: Settings, session_factory: sessionmaker, box: SecretBox
+) -> list[str]:
+    """启动时确定池分组：env UPSTREAM_KEYS 仅作首次引导，此后以 DB 为准。"""
+    with session_factory() as session:
+        if settings.upstream_keys:
+            seeded = upstream_key_service.seed_from_env_once(session, box, settings.upstream_keys)
+            if seeded:
+                log.info("seeded upstream keys from env (one-time)", count=seeded)
+            session.commit()
+        labels = upstream_key_service.active_pool_labels(session)
+    if not labels:
+        log.warning("上游 Key 未配置：管理面可用，问答请求将在 runtime 启动时失败")
+    return labels
 
 
 def create_application(settings: Settings) -> FastAPI:
     engine = get_engine()
     session_factory = get_session_factory()
+    box = build_secret_box(settings)
 
-    runner_factory, labels = build_runner_factory(settings)
+    control = UpstreamControl(settings=settings, session_factory=session_factory, box=box)
+    labels = bootstrap_upstream_keys(settings, session_factory, box)
     pool = RuntimePool(
-        runner_factory=runner_factory,
-        labels=labels,
+        runner_factory=control.runner_factory,
+        labels=labels or ["upstream-unconfigured"],
         # 未配置上游 Key 时不预热线程，避免启动即拉起无效子进程
-        min_size=settings.pool_min_size if settings.upstream_keys else 0,
+        min_size=settings.pool_min_size if labels else 0,
         max_size=settings.pool_max_size,
         queue_maxsize=settings.pool_queue_maxsize,
         acquire_timeout=settings.pool_acquire_timeout_seconds,
@@ -115,7 +142,7 @@ def create_application(settings: Settings) -> FastAPI:
         log.info(
             "starting runtime pool",
             labels=labels,
-            min_size=settings.pool_min_size if settings.upstream_keys else 0,
+            min_size=settings.pool_min_size if labels else 0,
             max_size=settings.pool_max_size,
         )
         pool.start()
@@ -131,6 +158,8 @@ def create_application(settings: Settings) -> FastAPI:
         admin_password=settings.admin_password,
         admin_session_ttl_hours=settings.admin_session_ttl_hours,
         lifespan=lifespan,
+        upstream_control=control,
+        pool=pool,
     )
     _mount_spa(app)
     return app

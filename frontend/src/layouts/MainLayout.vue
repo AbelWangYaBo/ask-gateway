@@ -8,6 +8,7 @@ const auth = useAuthStore()
 
 const menus = [
   { index: '/dashboard', title: '看板', icon: 'DataBoard' },
+  { index: '/upstream-keys', title: '上游 Key 管理', icon: 'Connection' },
   { index: '/keys', title: 'API Key 管理', icon: 'Key' },
   { index: '/requests', title: '审计检索', icon: 'Search' },
   { index: '/usage', title: '费用看板', icon: 'Coin' },

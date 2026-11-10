@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from ask_gateway.apis.admin import AdminConfig
 from ask_gateway.apis.admin import router as admin_router
 from ask_gateway.apis.v1 import router as v1_router
+from ask_gateway.runtime_pool.pool import RuntimePool
 from ask_gateway.services.chat_service import ChatRuntime
 from ask_gateway.services.errors import ServiceError
 
@@ -30,6 +31,8 @@ def create_app(
     admin_password: str = "",
     admin_session_ttl_hours: int = 12,
     lifespan: Lifespan | None = None,
+    upstream_control: object | None = None,
+    pool: RuntimePool | None = None,
 ) -> FastAPI:
     app = FastAPI(title="ask-gateway", version="0.1.0", lifespan=lifespan)
     app.state.chat_runtime = chat_runtime
@@ -37,6 +40,8 @@ def create_app(
         admin_password=admin_password,
         session_ttl_hours=admin_session_ttl_hours,
     )
+    app.state.upstream_control = upstream_control
+    app.state.pool = pool
     app.include_router(v1_router)
     app.include_router(admin_router)
 
