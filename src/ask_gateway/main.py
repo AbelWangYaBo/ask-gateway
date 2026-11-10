@@ -71,6 +71,10 @@ class UpstreamControl:
             upstream_key = upstream_key_service.plaintext_for_label(session, self.box, label)
         if upstream_key is None:
             raise RuntimeError(f"上游 Key 不可用（label={label}）：未配置或已停用")
+        # 动态新增 Key 的 home 是全新目录：spawn 前确保裁剪版 profile 就绪
+        from ask_gateway.services.profile_provision import ensure_profile
+
+        ensure_profile(settings, settings.dsh_home_root / label)
         return DshRunner(
             DshRunnerConfig(
                 upstream_key_label=label,

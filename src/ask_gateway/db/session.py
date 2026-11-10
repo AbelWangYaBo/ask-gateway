@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -37,6 +37,16 @@ def get_engine() -> Engine:
     if _engine is None:
         settings = get_settings()
         _engine = create_engine(settings.database_url, **_engine_kwargs(settings.database_url))
+        if settings.database_url.startswith("sqlite"):
+            # WAL：读写不互斥，写者排队；流式长请求与并发审计写入不再锁死
+            @event.listens_for(_engine, "connect")
+            def _sqlite_pragma(dbapi_conn: object, _record: object) -> None:  # noqa: ANN001
+                cursor = dbapi_conn.cursor()  # type: ignore[attr-defined]
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=5000")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.close()
+
         _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
     return _engine
 

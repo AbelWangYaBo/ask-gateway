@@ -27,6 +27,40 @@ from ask_gateway.runtime_pool.events import EventProjector, StoredEvent
 from ask_gateway.runtime_pool.runner import RunOutcome, build_outcome
 
 
+def to_prompt_text(messages: list[dict]) -> str:
+    """OpenAI messages → DSH 单轮 prompt 文本。
+
+    DSH 的 run() 吃一段输入文本（每次请求一个新 Session），多轮历史与
+    system 指令转录为对话文本保留语义；末尾的 Assistant 提示让模型接续作答。
+    """
+
+    def _content_text(content: object) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):  # OpenAI 多段 content，仅取文本段
+            return "\n".join(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            )
+        return ""
+
+    lines: list[str] = []
+    for message in messages:
+        role = message.get("role", "user")
+        text = _content_text(message.get("content")).strip()
+        if not text:
+            continue
+        if role == "system":
+            lines.append(f"[system instructions]\n{text}")
+        else:
+            label = {"user": "User", "assistant": "Assistant"}.get(role, role.capitalize())
+            lines.append(f"{label}: {text}")
+    if not lines:
+        raise RunnerError("empty prompt: no textual content in messages")
+    return "\n\n".join(lines) + "\n\nAssistant:"
+
+
 @dataclass(frozen=True, slots=True)
 class DshRunnerConfig:
     upstream_key_label: str
@@ -109,7 +143,7 @@ class DshRunner:
 
         try:
             result = self._harness.run(
-                messages,
+                to_prompt_text(messages),
                 session_id=owned_session_id,
                 on_notification=on_notification,
             )
