@@ -7,9 +7,9 @@ shell、文件系统、子代理、技能、工作流等工具，必须在 profi
 
 | 文件 | 职责 |
 | --- | --- |
-| `tool-denylist.patch.yml` | 唯一权威裁剪清单：10 个工具 id 全部 `disabled: true`，构建时写入每个 profile 的 `cordis.patch.yml` |
+| `tool-denylist.patch.yml` | 唯一权威裁剪清单：12 个工具 id 全部 `disabled: true`，构建时写入每个 profile 的 `cordis.patch.yml` |
 | `build_profile.py` | 一次性人工构建脚本：从随包 `sdk` 模板生成 `ask-gateway` profile、写入裁剪层、dump 校验工具面 |
-| `fixtures/ask-gateway.dump.yml` | 钉版本 runtime（0.2.1-rc.2）组合后的完整 `--dump-config` 快照，离线契约夹具 |
+| `fixtures/ask-gateway.dump.yml` | 钉版本 runtime（0.2.2-rc.1）组合后的完整 `--dump-config` 快照，离线契约夹具 |
 
 ## 裁剪口径
 
@@ -18,8 +18,11 @@ shell、文件系统、子代理、技能、工作流等工具，必须在 profi
 - shell：`tool-bash`、`tool-pwsh`
 - 文件系统：`tool-fs`、`tool-fs-search`
 - 技能：`tool-skill`
-- 子代理：`tool-subagent-control`、`tool-subagent-list-agents`、`tool-subagent`、`tool-subagent-fork`
+- 子代理：`tool-subagent-control`、`tool-subagent`、`tool-subagent-fork`（0.2.2 起上游移除 `tool-subagent-list-agents`）
 - 工作流：`tool-workflow`
+- 日程：`tool-schedule`（0.2.2 新增）
+- 向用户提问：`tool-ask-user`（0.2.2 新增，API 服务无人在环）
+- 演示交付物：`present`（0.2.2 新增，无 UI 消费者）
 
 保留：`tool-web`（联网搜索 + 网页抓取，含 `web-search-deepseek` 后端）及问答、会话、
 计量、压缩等基础设施插件。
@@ -36,7 +39,13 @@ uv run python dsh_profile/build_profile.py --dsh-home /path/to/dsh-home
 
 脚本幂等，可反复执行：每次都从模板全新复制 profile 再覆盖裁剪层，结果只取决于
 仓库里的 patch 文件与 runtime 版本。runtime 版本与 `uv.lock` 中的
-`deepseek-harness-sdk==0.2.1rc2` 对齐，漂移直接失败。
+`deepseek-harness-sdk==0.2.2rc1` 对齐，漂移直接失败。
+
+0.2.2rc1 未发布 PyPI，`wheels/` 里的两个 wheel 由本地源码构建：
+在 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 仓库 tag
+`dsh-v0.2.2-rc.1` 的 worktree 中按 CI 流程执行 `pnpm install --frozen-lockfile` →
+`pnpm exec tsx scripts/build-exe-for-python-sdk.ts --targets=node24-macos-arm64` →
+`scripts/build-python-release.py`（`--package runtime` 与 `--package sdk`）产出。
 
 ## 部署顺序（与迁移同级，绝不进应用 lifespan）
 

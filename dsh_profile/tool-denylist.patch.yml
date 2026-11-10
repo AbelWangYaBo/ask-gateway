@@ -9,9 +9,11 @@
 #   shell：tool-bash / tool-pwsh
 #   文件系统：tool-fs / tool-fs-search
 #   技能：tool-skill
-#   子代理：tool-subagent-control / tool-subagent-list-agents /
-#          tool-subagent / tool-subagent-fork
+#   子代理：tool-subagent-control / tool-subagent / tool-subagent-fork
 #   工作流：tool-workflow
+#   日程：tool-schedule（0.2.2 新增，schedule_* 模型工具）
+#   向用户提问：tool-ask-user（0.2.2 新增，API 服务无人在环）
+#   演示交付物：present（0.2.2 新增，无 UI 消费者）
 # 保留：tool-web（联网搜索 + 网页抓取）及全部问答/会话/计量基础设施。
 - id: tool-bash
   disabled: true
@@ -25,11 +27,15 @@
   disabled: true
 - id: tool-subagent-control
   disabled: true
-- id: tool-subagent-list-agents
-  disabled: true
 - id: tool-subagent
   disabled: true
 - id: tool-subagent-fork
   disabled: true
 - id: tool-workflow
+  disabled: true
+- id: tool-schedule
+  disabled: true
+- id: tool-ask-user
+  disabled: true
+- id: present
   disabled: true

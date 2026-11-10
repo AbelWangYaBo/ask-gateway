@@ -16,7 +16,7 @@
 - 构建后立即 --dump-config 校验工具面：禁用清单之外不得出现 shell/文件系统/
   子代理/技能/工作流工具，tool-web（联网搜索）必须保留。
 - 运行时版本钉在 EXPECTED_RUNTIME_VERSION，与 uv.lock 的
-  deepseek-harness-sdk==0.2.1rc2 对齐；漂移直接失败，不静默吃新版本。
+  deepseek-harness-sdk==0.2.2rc1 对齐；漂移直接失败，不静默吃新版本。
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from ask_gateway.logging_conf import configure_logging, get_logger
 
 log = get_logger(component="profile-build")
 
-EXPECTED_RUNTIME_VERSION = "0.2.1-rc.2"
+EXPECTED_RUNTIME_VERSION = "0.2.2-rc.1"
 PROFILE_NAME = "ask-gateway"
 TEMPLATE_PROFILE = "sdk"
 
@@ -46,10 +46,12 @@ DENIED_TOOL_IDS = (
     "tool-fs-search",
     "tool-skill",
     "tool-subagent-control",
-    "tool-subagent-list-agents",
     "tool-subagent",
     "tool-subagent-fork",
     "tool-workflow",
+    "tool-schedule",
+    "tool-ask-user",
+    "present",
 )
 REQUIRED_ENABLED_IDS = ("tool-web", "web-search-deepseek")
 
