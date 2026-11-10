@@ -22,6 +22,11 @@ class ApiKey(Base, TimestampMixin):
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", index=True)
 
+    # 手动启停开关（区别于吊销终态：可反复切换，不删除历史）
+    disabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # 到期时间：NULL = 永不过期；到期后拒绝鉴权，改回 NULL/未来时间即恢复
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # NULL 表示用全局默认配额
     rpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     daily_budget_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)

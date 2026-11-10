@@ -39,6 +39,7 @@ class RequestFilters:
     date_from: datetime | None
     date_to: datetime | None
     keyword: str | None
+    upstream_label: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,12 +121,16 @@ def update_key_quota(
 ) -> ApiKey:
     changes = payload.model_dump(exclude_unset=True)
     row = key_service.update_quota(session, key_id, **changes)
+    # 审计 JSON 列不能直接装 datetime：统一 isoformat
+    audit_detail = {
+        k: v.isoformat() if isinstance(v, datetime) else v for k, v in changes.items()
+    }
     audit_service.log_admin_action(
         session,
         "key_update",
         target_type="api_key",
         target_id=str(row.id),
-        detail=changes,
+        detail=audit_detail,
         client_ip=client_ip,
     )
     return row
@@ -145,6 +150,8 @@ def _apply_filters(stmt, filters: RequestFilters):
         stmt = stmt.where(RequestRecord.queued_at >= filters.date_from)
     if filters.date_to is not None:
         stmt = stmt.where(RequestRecord.queued_at <= filters.date_to)
+    if filters.upstream_label:
+        stmt = stmt.where(RequestRecord.upstream_key_label == filters.upstream_label)
     if filters.keyword:
         # 跨 PG/sqlite：显式 lower+like，不依赖方言 ILIKE 编译差异
         needle = f"%{filters.keyword.lower()}%"
@@ -319,6 +326,7 @@ _GROUP_COLUMNS = {
     "key": RequestRecord.api_key_id,
     "model": RequestRecord.model,
     "day": func.date(RequestRecord.queued_at),
+    "upstream_key": RequestRecord.upstream_key_label,
 }
 
 
@@ -337,6 +345,11 @@ def usage_summary(
 
     key_labels: dict[UUID, ApiKey] = {
         row.id: row for row in session.scalars(select(ApiKey)).all()
+    }
+    from ask_gateway.models.api_key import UpstreamKey
+
+    upstream_labels: dict[str, str] = {
+        row.pool_label: row.label for row in session.scalars(select(UpstreamKey)).all()
     }
 
     result: list[SummaryRow] = []
@@ -365,6 +378,8 @@ def usage_summary(
                 if key_row is not None
                 else group_value
             )
+        elif group_by == "upstream_key":
+            label = upstream_labels.get(group_value, group_value)
         else:
             label = group_value
         result.append(
@@ -509,3 +524,62 @@ def dashboard(session: Session) -> DashboardData:
         active_keys=int(active_keys),
         status_distribution=status_distribution,
     )
+
+
+# ---- Key 验证：输入明文，判定归属 ----
+
+
+@dataclass(frozen=True, slots=True)
+class KeyVerifyResult:
+    kind: str  # "platform" | "upstream" | "unknown"
+    key_id: str | None
+    label: str | None
+    holder_name: str | None
+    preview: str | None
+    status: str | None  # platform: active/revoked；upstream: enabled/disabled
+    expires_at: datetime | None = None
+
+
+def verify_key_plaintext(session: Session, box, plaintext: str) -> KeyVerifyResult:
+    """按明文探测归属：平台 sk-ask- Key（SHA-256 全文匹配）优先，其次上游 Key（指纹）。"""
+    from ask_gateway.models.api_key import UpstreamKey
+    from ask_gateway.services.secret_box import SecretBox
+    from ask_gateway.services.security import hash_key
+
+    plaintext = plaintext.strip()
+    if not plaintext:
+        return KeyVerifyResult(kind="unknown", key_id=None, label=None, holder_name=None,
+                               preview=None, status=None)
+
+    key_hash = hash_key(plaintext)
+    platform = session.scalar(select(ApiKey).where(ApiKey.key_hash == key_hash))
+    if platform is not None:
+        status = platform.status if platform.status != "active" else (
+            "disabled" if platform.disabled else "active"
+        )
+        return KeyVerifyResult(
+            kind="platform",
+            key_id=str(platform.id),
+            label=platform.label,
+            holder_name=platform.holder_name,
+            preview=platform.key_prefix,
+            status=status,
+            expires_at=platform.expires_at,
+        )
+
+    fingerprint = SecretBox.fingerprint(plaintext)
+    upstream = session.scalar(
+        select(UpstreamKey).where(UpstreamKey.key_fingerprint == fingerprint)
+    )
+    if upstream is not None:
+        return KeyVerifyResult(
+            kind="upstream",
+            key_id=str(upstream.id),
+            label=upstream.label,
+            holder_name=None,
+            preview=upstream.key_preview,
+            status="enabled" if upstream.is_active else "disabled",
+        )
+
+    return KeyVerifyResult(kind="unknown", key_id=None, label=None, holder_name=None,
+                           preview=SecretBox.preview(plaintext), status=None)

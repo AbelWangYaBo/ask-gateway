@@ -12,6 +12,8 @@ import type {
   RequestDetail,
   RequestFilters,
   RequestPage,
+  KeyVerifyPayload,
+  KeyVerifyResult,
   UpstreamKey,
   UpstreamKeyPayload,
   UsageSummary,
@@ -39,6 +41,9 @@ export const keysApi = {
   },
   updateQuota(keyId: string, payload: QuotaPayload): Promise<ApiKey> {
     return http.patch(`/admin/keys/${keyId}`, payload).then((r) => r.data)
+  },
+  verify(payload: KeyVerifyPayload): Promise<KeyVerifyResult> {
+    return http.post('/admin/keys/verify', payload).then((r) => r.data)
   },
 }
 

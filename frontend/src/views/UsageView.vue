@@ -22,6 +22,54 @@ const groupOptions: Array<{ value: GroupBy; label: string }> = [
   { value: 'key', label: '按 Key' },
   { value: 'model', label: '按模型' },
   { value: 'day', label: '按天' },
+  { value: 'upstream_key', label: '按上游 Key' },
+]
+
+// ---- 快捷时间范围（本周/本月均截止到当天） ----
+
+type RangePreset = 'today' | 'last7' | 'last30' | 'week' | 'month' | 'custom'
+const preset = ref<RangePreset>('custom')
+
+function dayStart(d: Date): Date {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+function dayEnd(d: Date): Date {
+  const x = new Date(d)
+  x.setHours(23, 59, 59, 999)
+  return x
+}
+
+function applyPreset(value: RangePreset) {
+  preset.value = value
+  if (value === 'custom') return
+  const now = new Date()
+  const from = new Date(now)
+  if (value === 'today') {
+    // 当天
+  } else if (value === 'last7') {
+    from.setDate(now.getDate() - 6)
+  } else if (value === 'last30') {
+    from.setDate(now.getDate() - 29)
+  } else if (value === 'week') {
+    const dow = (now.getDay() + 6) % 7 // 周一为一周之始
+    from.setDate(now.getDate() - dow)
+  } else if (value === 'month') {
+    from.setDate(1)
+  }
+  dateRange.value = [dayStart(from), dayEnd(now)]
+  void load()
+}
+
+const presetOptions: Array<{ value: RangePreset; label: string }> = [
+  { value: 'today', label: '今天' },
+  { value: 'last7', label: '近 7 天' },
+  { value: 'last30', label: '近 30 天' },
+  { value: 'week', label: '本周' },
+  { value: 'month', label: '本月' },
+  { value: 'custom', label: '自定义' },
 ]
 
 async function load() {
@@ -93,12 +141,23 @@ const totalCost = computed(() =>
           </el-select>
         </el-form-item>
         <el-form-item label="时间范围">
+          <el-radio-group :model-value="preset" @update:model-value="(v: string | number | boolean) => applyPreset(v as RangePreset)">
+            <el-radio-button
+              v-for="option in presetOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </el-radio-button>
+          </el-radio-group>
           <el-date-picker
+            v-if="preset === 'custom'"
             v-model="dateRange"
             type="datetimerange"
             range-separator="至"
             start-placeholder="开始"
             end-placeholder="结束"
+            style="margin-left: 12px; width: 360px"
           />
         </el-form-item>
         <el-form-item>

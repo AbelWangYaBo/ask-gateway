@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -42,6 +43,8 @@ class QuotaUpdateRequest(BaseModel):
     rpm_limit: int | None = Field(default=None, ge=1)
     daily_budget_cents: int | None = Field(default=None, ge=0)
     max_concurrency: int | None = Field(default=None, ge=1)
+    disabled: bool | None = None
+    expires_at: datetime | None = None
 
 
 class KeyOut(BaseModel):
@@ -58,6 +61,8 @@ class KeyOut(BaseModel):
     last_used_at: datetime | None
     revoked_at: datetime | None
     created_at: datetime
+    disabled: bool = False
+    expires_at: datetime | None = None
 
 
 class KeyCreatedOut(KeyOut):
@@ -281,3 +286,17 @@ class UpstreamKeyUpdateRequest(BaseModel):
     label: str | None = Field(default=None, min_length=1, max_length=64)
     notes: str | None = Field(default=None, max_length=512)
     is_active: bool | None = None
+
+
+class KeyVerifyRequest(BaseModel):
+    plaintext: str = Field(min_length=1, max_length=512)
+
+
+class KeyVerifyResultOut(BaseModel):
+    kind: Literal["platform", "upstream", "unknown"]
+    key_id: str | None
+    label: str | None
+    holder_name: str | None
+    preview: str | None
+    status: str | None
+    expires_at: datetime | None = None

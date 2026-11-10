@@ -50,15 +50,31 @@ def create_api_key(
 
 
 def authenticate(session: Session, plaintext: str) -> ApiKey | None:
-    """按明文 Key 找 active 行；不存在、已吊销均返回 None。"""
+    """按明文 Key 找可用行。
+
+    拒绝条件：不存在、已吊销、手动停用（disabled）、已到期（expires_at 早于当前）。
+    expires_at 为 NULL 表示永不过期；改回 NULL/未来时间即恢复。
+    """
     if not plaintext:
         return None
-    return session.scalar(
+    row = session.scalar(
         select(ApiKey).where(
             ApiKey.key_hash == hash_key(plaintext),
             ApiKey.status == "active",
         )
     )
+    if row is None:
+        return None
+    if row.disabled:
+        return None
+    if row.expires_at is not None:
+        # sqlite 读回 naive（UTC 写入），PG 带 tz：统一按 UTC 比较
+        expires = row.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        if datetime.now(UTC) >= expires:
+            return None
+    return row
 
 
 def revoke_key(session: Session, key_id: uuid.UUID) -> ApiKey:
@@ -79,8 +95,10 @@ def update_quota(
     rpm_limit: Any = _UNSET,
     daily_budget_cents: Any = _UNSET,
     max_concurrency: Any = _UNSET,
+    disabled: Any = _UNSET,
+    expires_at: Any = _UNSET,
 ) -> ApiKey:
-    """更新配额字段。未传的字段保持不动；显式传 None 表示清除并回落全局默认。"""
+    """更新配额/启停/到期字段。未传的字段保持不动；显式传 None 表示清除。"""
     key_row = session.get(ApiKey, key_id)
     if key_row is None:
         raise KeyNotFoundError()
@@ -90,6 +108,10 @@ def update_quota(
         key_row.daily_budget_cents = daily_budget_cents
     if max_concurrency is not _UNSET:
         key_row.max_concurrency = max_concurrency
+    if disabled is not _UNSET:
+        key_row.disabled = bool(disabled)
+    if expires_at is not _UNSET:
+        key_row.expires_at = expires_at
     session.flush()
     return key_row
 

@@ -24,6 +24,8 @@ from ask_gateway.schemas.admin import (
     KeyCreatedOut,
     KeyCreateRequest,
     KeyOut,
+    KeyVerifyRequest,
+    KeyVerifyResultOut,
     LoginRequest,
     LoginResponse,
     PricingCreateRequest,
@@ -40,7 +42,12 @@ from ask_gateway.schemas.admin import (
     UsageSummaryOut,
     UsageSummaryRow,
 )
-from ask_gateway.services import admin_auth, admin_service, upstream_key_service
+from ask_gateway.services import (
+    admin_auth,
+    admin_service,
+    audit_service,
+    upstream_key_service,
+)
 from ask_gateway.services.admin_service import RequestFilters
 from ask_gateway.services.errors import AuthError
 
@@ -152,6 +159,42 @@ def update_key_quota(
     return KeyOut.model_validate(row)
 
 
+@router.post(
+    "/admin/keys/verify",
+    response_model=KeyVerifyResultOut,
+    dependencies=[Depends(require_admin)],
+)
+def verify_key(
+    payload: KeyVerifyRequest,
+    request: Request,
+    session: Session = Depends(session_scope),
+) -> KeyVerifyResultOut:
+    """输入明文 Key，判定归属（平台 sk-ask- / 上游 DeepSeek），返回匹配详情。"""
+    control = getattr(request.app.state, "upstream_control", None)
+    box = control.box if control is not None else None
+    if box is None:
+        from ask_gateway.services.secret_box import SecretBox
+
+        box = SecretBox(b"v" * 32)  # 无上游管理面环境（轻量 CI）也能验平台 Key
+    result = admin_service.verify_key_plaintext(session, box, payload.plaintext)
+    audit_service.log_admin_action(
+        session,
+        "key_verify",
+        target_type="key",
+        detail={"kind": result.kind, "key_id": result.key_id},
+        client_ip=_client_ip(request),
+    )
+    return KeyVerifyResultOut(
+        kind=result.kind,
+        key_id=result.key_id,
+        label=result.label,
+        holder_name=result.holder_name,
+        preview=result.preview,
+        status=result.status,
+        expires_at=result.expires_at,
+    )
+
+
 # ---- 审计检索 ----
 
 
@@ -168,10 +211,17 @@ def list_requests(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     keyword: str | None = None,
+    upstream_key_id: UUID | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: Session = Depends(session_scope),
 ) -> RequestPage:
+    upstream_label = None
+    if upstream_key_id is not None:
+        from ask_gateway.models.api_key import UpstreamKey
+
+        row = session.get(UpstreamKey, upstream_key_id)
+        upstream_label = row.pool_label if row is not None else f"upstream-{upstream_key_id.hex[:8]}"
     filters = RequestFilters(
         holder_name=holder_name,
         key_id=key_id,
@@ -179,6 +229,7 @@ def list_requests(
         date_from=date_from,
         date_to=date_to,
         keyword=keyword,
+        upstream_label=upstream_label,
     )
     rows, total = admin_service.list_requests(
         session, filters, page, page_size, _client_ip(request)
@@ -236,7 +287,7 @@ def export_request(
     dependencies=[Depends(require_admin)],
 )
 def usage_summary(
-    group_by: Literal["holder", "key", "model", "day"] = "day",
+    group_by: Literal["holder", "key", "model", "day", "upstream_key"] = "day",
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     session: Session = Depends(session_scope),

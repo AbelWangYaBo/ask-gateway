@@ -52,6 +52,17 @@ const lineOption = computed<EChartsCoreOption>(() => {
   }
 })
 
+// 状态语义色：成功绿、断连黄、失败红、其余中性色兜底
+const STATUS_COLORS: Record<string, string> = {
+  succeeded: '#22c55e',
+  client_disconnected: '#eab308',
+  failed: '#ef4444',
+  upstream_error: '#f97316',
+  upstream_timeout: '#f97316',
+  rate_limited: '#a855f7',
+  quota_exceeded: '#a855f7',
+}
+
 const pieOption = computed<EChartsCoreOption>(() => {
   if (!dashboard.value) return {}
   return {
@@ -65,6 +76,7 @@ const pieOption = computed<EChartsCoreOption>(() => {
         data: Object.entries(dashboard.value.status_distribution).map(([name, value]) => ({
           name,
           value,
+          itemStyle: { color: STATUS_COLORS[name] ?? '#94a3b8' },
         })),
       },
     ],

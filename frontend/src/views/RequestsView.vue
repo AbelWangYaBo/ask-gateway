@@ -2,8 +2,8 @@
 import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 
-import { requestsApi } from '@/api'
-import type { RequestDetail, RequestFilters, RequestListItem } from '@/api/types'
+import { requestsApi, upstreamKeysApi } from '@/api'
+import type { RequestDetail, RequestFilters, RequestListItem, UpstreamKey } from '@/api/types'
 import { ApiError } from '@/api/client'
 import RequestDetailDrawer from '@/components/RequestDetailDrawer.vue'
 import {
@@ -21,10 +21,21 @@ const total = ref(0)
 const filters = reactive({
   holder_name: '',
   key_id: '',
+  upstream_key_id: '',
   status: '',
   keyword: '',
   dateRange: [] as Date[],
 })
+
+const upstreamKeys = ref<UpstreamKey[]>([])
+
+async function loadUpstreamKeys() {
+  try {
+    upstreamKeys.value = await upstreamKeysApi.list()
+  } catch {
+    upstreamKeys.value = []
+  }
+}
 const page = ref(1)
 const pageSize = ref(20)
 
@@ -43,6 +54,7 @@ async function load() {
     const params: RequestFilters = {
       holder_name: filters.holder_name || undefined,
       key_id: filters.key_id || undefined,
+      upstream_key_id: filters.upstream_key_id || undefined,
       status: filters.status || undefined,
       keyword: filters.keyword || undefined,
       date_from: filters.dateRange[0]
@@ -72,6 +84,7 @@ function search() {
 function reset() {
   filters.holder_name = ''
   filters.key_id = ''
+  filters.upstream_key_id = ''
   filters.status = ''
   filters.keyword = ''
   filters.dateRange = []
@@ -79,7 +92,10 @@ function reset() {
   void load()
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void loadUpstreamKeys()
+})
 
 // ---- 详情抽屉 ----
 
@@ -105,6 +121,21 @@ async function openDetail(row: RequestListItem) {
         </el-form-item>
         <el-form-item label="Key ID">
           <el-input v-model="filters.key_id" placeholder="UUID" clearable />
+        </el-form-item>
+        <el-form-item label="上游 Key">
+          <el-select
+            v-model="filters.upstream_key_id"
+            placeholder="全部上游"
+            clearable
+            style="width: 160px"
+          >
+            <el-option
+              v-for="k in upstreamKeys"
+              :key="k.id"
+              :value="k.id"
+              :label="`${k.label}（${k.key_preview}）`"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 130px">

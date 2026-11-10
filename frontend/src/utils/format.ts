@@ -26,7 +26,9 @@ export function formatLatency(ms: number | null | undefined): string {
 
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—'
-  const date = new Date(iso)
+  // 后端序列化为 naive UTC（无 Z/偏移）：补 Z 后按北京时间展示
+  const normalized = /[Zz]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`
+  const date = new Date(normalized)
   if (Number.isNaN(date.getTime())) return iso
   return date.toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',

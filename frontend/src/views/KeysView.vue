@@ -5,7 +5,32 @@ import { onMounted, reactive, ref } from 'vue'
 import { keysApi } from '@/api'
 import type { ApiKey, ApiKeyCreated, KeyCreatePayload, QuotaPayload } from '@/api/types'
 import { ApiError } from '@/api/client'
+import KeyVerifyDialog from '@/components/KeyVerifyDialog.vue'
 import { formatDateTime, formatYuan } from '@/utils/format'
+
+const verifyVisible = ref(false)
+
+function isExpired(row: ApiKey): boolean {
+  if (!row.expires_at) return false
+  return new Date(`${row.expires_at}Z`).getTime() <= Date.now()
+}
+
+function statusTag(row: ApiKey): { type: 'success' | 'warning' | 'danger' | 'info'; text: string } {
+  if (row.status === 'revoked') return { type: 'info', text: '已吊销' }
+  if (isExpired(row)) return { type: 'danger', text: '已到期' }
+  if (row.disabled) return { type: 'warning', text: '已停用' }
+  return { type: 'success', text: '生效中' }
+}
+
+async function toggleDisabled(row: ApiKey, value: boolean) {
+  try {
+    await keysApi.updateQuota(row.id, { disabled: value })
+    row.disabled = value
+    ElMessage.success(value ? '已停用（可随时开启）' : '已启用')
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '操作失败')
+  }
+}
 
 const loading = ref(false)
 const rows = ref<ApiKey[]>([])
@@ -109,10 +134,12 @@ const quotaForm = reactive<{
   rpm_limit: number | null
   daily_budget_cents: number | null
   max_concurrency: number | null
+  expires_at: string | null
 }>({
   rpm_limit: null,
   daily_budget_cents: null,
   max_concurrency: null,
+  expires_at: null,
 })
 
 function openQuota(row: ApiKey) {
@@ -120,6 +147,7 @@ function openQuota(row: ApiKey) {
   quotaForm.rpm_limit = row.rpm_limit
   quotaForm.daily_budget_cents = row.daily_budget_cents
   quotaForm.max_concurrency = row.max_concurrency
+  quotaForm.expires_at = row.expires_at
   quotaVisible.value = true
 }
 
@@ -131,11 +159,12 @@ async function submitQuota() {
     rpm_limit: quotaForm.rpm_limit ?? null,
     daily_budget_cents: quotaForm.daily_budget_cents ?? null,
     max_concurrency: quotaForm.max_concurrency ?? null,
+    expires_at: quotaForm.expires_at ?? null,
   }
   quotaSubmitting.value = true
   try {
     await keysApi.updateQuota(quotaTarget.value.id, payload)
-    ElMessage.success('配额已更新')
+    ElMessage.success('已更新（配额/到期时间）')
     quotaVisible.value = false
     await load()
   } catch (error) {
@@ -150,6 +179,7 @@ async function submitQuota() {
   <div>
     <div class="toolbar">
       <el-button type="primary" @click="openCreate">新建 Key</el-button>
+      <el-button @click="verifyVisible = true">验证 Key</el-button>
       <el-button @click="load">刷新</el-button>
     </div>
 
@@ -160,9 +190,21 @@ async function submitQuota() {
         <el-table-column label="标签" prop="label" width="160" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'info'">
-              {{ row.status === 'active' ? '生效中' : '已吊销' }}
-            </el-tag>
+            <el-tag :type="statusTag(row).type">{{ statusTag(row).text }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="启停" width="80">
+          <template #default="{ row }">
+            <el-switch
+              :model-value="!row.disabled"
+              :disabled="row.status !== 'active'"
+              @change="(v: boolean) => toggleDisabled(row, !v)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="到期时间" width="180">
+          <template #default="{ row }">
+            {{ row.expires_at ? formatDateTime(row.expires_at) : '永不过期' }}
           </template>
         </el-table-column>
         <el-table-column label="RPM 上限" width="100">
@@ -272,12 +314,23 @@ async function submitQuota() {
         <el-form-item label="并发上限">
           <el-input-number v-model="quotaForm.max_concurrency" :min="1" controls-position="right" />
         </el-form-item>
+        <el-form-item label="到期时间（留空 = 永不过期；到期后拒绝鉴权，改回留空/未来时间即恢复）">
+          <el-date-picker
+            v-model="quotaForm.expires_at"
+            type="datetime"
+            placeholder="永不过期"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            style="width: 100%"
+          />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="quotaVisible = false">取消</el-button>
         <el-button type="primary" :loading="quotaSubmitting" @click="submitQuota">保存</el-button>
       </template>
     </el-dialog>
+
+    <KeyVerifyDialog v-model:visible="verifyVisible" />
   </div>
 </template>
 

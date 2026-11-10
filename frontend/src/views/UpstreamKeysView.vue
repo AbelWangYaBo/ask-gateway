@@ -7,6 +7,7 @@
         指纹 = SHA-256 前 16 位，可与 DeepSeek 平台侧 Key 比对。
       </p>
       <el-button type="primary" @click="showCreate = true">新增上游 Key</el-button>
+      <el-button @click="verifyVisible = true">验证 Key</el-button>
     </div>
 
     <el-table :data="rows" v-loading="loading" border stripe>
@@ -66,6 +67,8 @@
         <el-button type="primary" :loading="creating" @click="create">创建</el-button>
       </template>
     </el-dialog>
+
+    <KeyVerifyDialog v-model:visible="verifyVisible" />
   </div>
 </template>
 
@@ -74,6 +77,9 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { upstreamKeysApi } from '@/api'
 import type { UpstreamKey } from '@/api/types'
+import KeyVerifyDialog from '@/components/KeyVerifyDialog.vue'
+
+const verifyVisible = ref(false)
 import { formatDateTime } from '@/utils/format'
 
 const rows = ref<UpstreamKey[]>([])

@@ -17,6 +17,8 @@ export interface ApiKey {
   last_used_at: string | null
   revoked_at: string | null
   created_at: string
+  disabled: boolean
+  expires_at: string | null
 }
 
 export interface ApiKeyCreated extends ApiKey {
@@ -34,6 +36,8 @@ export interface KeyCreatePayload {
 export type QuotaPayload = Partial<{
   rpm_limit: number | null
   daily_budget_cents: number | null
+  disabled: boolean | null
+  expires_at: string | null
   max_concurrency: number | null
 }>
 
@@ -106,6 +110,7 @@ export interface RequestPage {
 export interface RequestFilters {
   holder_name?: string
   key_id?: string
+  upstream_key_id?: string
   status?: string
   date_from?: string
   date_to?: string
@@ -130,7 +135,7 @@ export interface UsageChart {
 }
 
 export interface UsageSummary {
-  group_by: 'holder' | 'key' | 'model' | 'day'
+  group_by: 'holder' | 'key' | 'model' | 'day' | 'upstream_key'
   date_from: string | null
   date_to: string | null
   rows: UsageSummaryRow[]
@@ -212,4 +217,18 @@ export interface UpstreamKeyPayload {
   label: string
   plaintext: string
   notes?: string | null
+}
+
+export interface KeyVerifyPayload {
+  plaintext: string
+}
+
+export interface KeyVerifyResult {
+  kind: 'platform' | 'upstream' | 'unknown'
+  key_id: string | null
+  label: string | null
+  holder_name: string | null
+  preview: string | null
+  status: string | null
+  expires_at: string | null
 }
