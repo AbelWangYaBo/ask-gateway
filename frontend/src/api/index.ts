@@ -1,4 +1,4 @@
-import { http } from './client'
+import { http, portalHttp } from './client'
 import type {
   ApiKey,
   ApiKeyCreated,
@@ -14,6 +14,8 @@ import type {
   RequestPage,
   KeyVerifyPayload,
   KeyVerifyResult,
+  PortalDashboard,
+  PortalProfile,
   UpstreamKey,
   UpstreamKeyPayload,
   UsageSummary,
@@ -126,5 +128,44 @@ export const upstreamKeysApi = {
   },
   remove(keyId: string): Promise<void> {
     return http.delete(`/admin/upstream-keys/${keyId}`).then(() => undefined)
+  },
+}
+
+// ---- 用户门户 ----
+
+export const portalApi = {
+  login(apiKey: string): Promise<PortalProfile> {
+    return portalHttp
+      .get('/portal/profile', { headers: { Authorization: `Bearer ${apiKey}` } })
+      .then((r) => r.data)
+  },
+  profile(): Promise<PortalProfile> {
+    return portalHttp.get('/portal/profile').then((r) => r.data)
+  },
+  dashboard(): Promise<PortalDashboard> {
+    return portalHttp.get('/portal/dashboard').then((r) => r.data)
+  },
+  requests(filters: {
+    status?: string
+    date_from?: string
+    date_to?: string
+    page?: number
+    page_size?: number
+  }): Promise<RequestPage> {
+    return portalHttp.get('/portal/requests', { params: filters }).then((r) => r.data)
+  },
+  requestDetail(requestId: string): Promise<RequestDetail> {
+    return portalHttp.get(`/portal/requests/${requestId}`).then((r) => r.data)
+  },
+  usage(
+    groupBy: 'key' | 'model' | 'day',
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<UsageSummary> {
+    return portalHttp
+      .get('/portal/usage/summary', {
+        params: { group_by: groupBy, date_from: dateFrom, date_to: dateTo },
+      })
+      .then((r) => r.data)
   },
 }

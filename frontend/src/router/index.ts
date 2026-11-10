@@ -58,6 +58,38 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    // portal 路由不受管理台守卫约束：API Key 登录态由 portalHttp 的 401 拦截器负责
+    path: '/portal/login',
+    name: 'portal-login',
+    meta: { public: true, title: '用户中心登录' },
+    component: () => import('@/views/portal/PortalLoginView.vue'),
+  },
+  {
+    path: '/portal',
+    meta: { public: true },
+    component: () => import('@/layouts/PortalLayout.vue'),
+    children: [
+      {
+        path: 'dashboard',
+        name: 'portal-dashboard',
+        meta: { public: true, title: '我的概览' },
+        component: () => import('@/views/portal/PortalDashboardView.vue'),
+      },
+      {
+        path: 'requests',
+        name: 'portal-requests',
+        meta: { public: true, title: '请求记录' },
+        component: () => import('@/views/portal/PortalRequestsView.vue'),
+      },
+      {
+        path: 'usage',
+        name: 'portal-usage',
+        meta: { public: true, title: '消耗统计' },
+        component: () => import('@/views/portal/PortalUsageView.vue'),
+      },
+    ],
+  },
   { path: '/:pathMatch(.*)*', redirect: '/dashboard' },
 ]
 

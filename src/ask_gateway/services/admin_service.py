@@ -178,13 +178,13 @@ def _filters_detail(filters: RequestFilters, page: int, page_size: int, total: i
     }
 
 
-def list_requests(
+def query_requests(
     session: Session,
     filters: RequestFilters,
     page: int,
     page_size: int,
-    client_ip: str | None,
 ) -> tuple[list[RequestRecord], int]:
+    """请求检索核心（无留痕）：管理端与用户门户共用。"""
     base = _apply_filters(select(RequestRecord), filters)
     total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = list(
@@ -194,6 +194,17 @@ def list_requests(
             .limit(page_size)
         ).all()
     )
+    return rows, total
+
+
+def list_requests(
+    session: Session,
+    filters: RequestFilters,
+    page: int,
+    page_size: int,
+    client_ip: str | None,
+) -> tuple[list[RequestRecord], int]:
+    rows, total = query_requests(session, filters, page, page_size)
     audit_service.log_admin_action(
         session,
         "audit_view",
@@ -335,9 +346,11 @@ def usage_summary(
     group_by: str,
     date_from: datetime | None,
     date_to: datetime | None,
+    *,
+    extra_conditions: list | None = None,
 ) -> list[SummaryRow]:
     group_col = _GROUP_COLUMNS[group_by]
-    conditions = []
+    conditions = list(extra_conditions or [])
     if date_from is not None:
         conditions.append(RequestRecord.queued_at >= date_from)
     if date_to is not None:

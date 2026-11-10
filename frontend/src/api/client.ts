@@ -64,3 +64,46 @@ http.interceptors.response.use(
     return Promise.reject(new ApiError(status, code, message))
   },
 )
+
+// ---- 用户门户（API Key 即凭证，与管理台凭证互相独立） ----
+
+export const PORTAL_KEY_STORAGE = 'ask_gateway_portal_api_key'
+
+export function readPortalKey(): string | null {
+  return localStorage.getItem(PORTAL_KEY_STORAGE)
+}
+
+export function clearPortalKey(): void {
+  localStorage.removeItem(PORTAL_KEY_STORAGE)
+}
+
+function buildErrorInterceptor(prefix: string) {
+  return (error: AxiosError<ApiErrorBody>) => {
+    const status = error.response?.status ?? 0
+    const envelope = error.response?.data?.error
+    const message = envelope?.message ?? error.message ?? '网络异常'
+    const code = envelope?.code ?? 'network_error'
+    if (status === 401) {
+      clearPortalKey()
+      if (window.location.pathname.startsWith(prefix) && window.location.pathname !== `${prefix}/login`) {
+        window.location.assign(`${prefix}/login`)
+      }
+    }
+    return Promise.reject(new ApiError(status, code, message))
+  }
+}
+
+export const portalHttp: AxiosInstance = axios.create({
+  baseURL: '',
+  timeout: 30_000,
+})
+
+portalHttp.interceptors.request.use((config) => {
+  const key = readPortalKey()
+  if (key) {
+    config.headers.set('Authorization', `Bearer ${key}`)
+  }
+  return config
+})
+
+portalHttp.interceptors.response.use((response) => response, buildErrorInterceptor('/portal'))

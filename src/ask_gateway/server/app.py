@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from ask_gateway.apis.admin import AdminConfig
 from ask_gateway.apis.admin import router as admin_router
+from ask_gateway.apis.portal import router as portal_router
 from ask_gateway.apis.v1 import router as v1_router
 from ask_gateway.runtime_pool.pool import RuntimePool
 from ask_gateway.services.chat_service import ChatRuntime
@@ -44,6 +45,7 @@ def create_app(
     app.state.pool = pool
     app.include_router(v1_router)
     app.include_router(admin_router)
+    app.include_router(portal_router)
 
     @app.exception_handler(ServiceError)
     async def _service_error(request: Request, exc: ServiceError) -> JSONResponse:

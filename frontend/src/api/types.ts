@@ -232,3 +232,31 @@ export interface KeyVerifyResult {
   status: string | null
   expires_at: string | null
 }
+
+export interface PortalKeyItem {
+  id: string
+  key_prefix: string
+  label: string
+  status: string
+  disabled: boolean
+  expires_at: string | null
+  rpm_limit: number | null
+  daily_budget_cents: number | null
+  max_concurrency: number | null
+  last_used_at: string | null
+  created_at: string
+}
+
+export interface PortalProfile {
+  holder_name: string
+  keys: PortalKeyItem[]
+}
+
+export interface PortalDashboard {
+  total_requests: number
+  succeeded: number
+  success_rate: number
+  total_cost_cents: number
+  total_input_tokens: number
+  total_output_tokens: number
+}
