@@ -27,7 +27,12 @@
               </el-collapse-item>
             </el-collapse>
           </div>
-          <pre class="content">{{ msg.content || (msg.streaming ? '…' : '') }}</pre>
+          <div v-if="msg.streaming && !msg.content" class="status">
+            <span class="pulse" />
+            {{ msg.status || '正在思考 …' }}
+            <span v-if="msg.elapsed">已进行 {{ msg.elapsed }}s</span>
+          </div>
+          <pre class="content">{{ msg.content || (msg.streaming ? '' : '') }}</pre>
           <div v-if="msg.usage" class="usage">
             {{ msg.usage }} · {{ msg.searchCount ? `联网搜索 ×${msg.searchCount}` : '未联网' }}
           </div>
@@ -69,9 +74,23 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   reasoning: string
+  status?: string
+  elapsed?: number
   streaming?: boolean
   usage?: string
   searchCount?: number
+}
+
+/** DSH 过程事件 → 用户可读的进展提示；返回 null 表示无需展示。 */
+function describeDshEvent(type: string, payload: Record<string, unknown>): string | null {
+  if (type === 'tool/call') {
+    const name = payload.name ?? payload.tool ?? '工具'
+    return `正在调用 ${name} …`
+  }
+  if (type.startsWith('web/') || type.includes('search')) return '正在联网搜索 …'
+  if (type === 'thinking' || type === 'assistant/message') return '正在思考 …'
+  if (type.startsWith('step/') || type.startsWith('turn/')) return '正在处理 …'
+  return null
 }
 
 const model = ref('deepseek-flash')
@@ -106,6 +125,11 @@ async function send() {
   messages.value.push(assistant)
   streaming.value = true
   scrollBottom()
+
+  const startedAt = Date.now()
+  const timer = window.setInterval(() => {
+    if (assistant.streaming) assistant.elapsed = Math.round((Date.now() - startedAt) / 1000)
+  }, 1000)
 
   controller = new AbortController()
   try {
@@ -148,11 +172,19 @@ async function send() {
             choices?: Array<{ delta?: Record<string, string | null> }>
             usage?: { prompt_tokens?: number; completion_tokens?: number; search_count?: number }
           }
-          if (message.event === null || message.event === 'message') {
+          if (message.event === 'x-dsh-event') {
+            const described = describeDshEvent(
+              (payload as { type?: string }).type ?? '',
+              (payload as { payload?: Record<string, unknown> }).payload ?? payload,
+            )
+            if (described) assistant.status = described
+            scrollBottom()
+          } else if (message.event === null || message.event === 'message') {
             const delta = parseChatDelta(message.data)
             if (delta) {
               assistant.content += delta.content
               assistant.reasoning += delta.reasoning
+              if (delta.content) assistant.status = undefined
               scrollBottom()
             }
           }
@@ -176,7 +208,10 @@ async function send() {
       ElMessage.error(error instanceof ApiError ? error.message : '请求失败')
     }
   } finally {
+    window.clearInterval(timer)
     assistant.streaming = false
+    assistant.status = undefined
+    assistant.elapsed = undefined
     streaming.value = false
     controller = null
     scrollBottom()
@@ -249,6 +284,24 @@ void portalHttp
   white-space: pre-wrap;
   font-size: 12px;
   color: #6b7280;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 13px;
+}
+.pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  animation: blink 1.2s ease-in-out infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
 }
 .usage {
   margin-top: 6px;
