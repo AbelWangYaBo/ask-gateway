@@ -6,15 +6,21 @@
 
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query
+import anyio
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sse_starlette.sse import EventSourceResponse
 
 from ask_gateway.db.session import session_scope
 from ask_gateway.models.api_key import ApiKey
+from ask_gateway.models.conversation import Conversation
 from ask_gateway.schemas.admin import (
     RequestDetailOut,
     RequestListItem,
@@ -24,12 +30,25 @@ from ask_gateway.schemas.admin import (
     UsageSummaryOut,
     UsageSummaryRow,
 )
+from ask_gateway.schemas.conversation import (
+    ConversationChatRequest,
+    ConversationCreateRequest,
+    ConversationDetailOut,
+    ConversationForkRequest,
+    ConversationMessageOut,
+    ConversationOut,
+)
 from ask_gateway.schemas.portal import PortalDashboardOut, PortalProfileOut
-from ask_gateway.services import admin_service, portal_service
+from ask_gateway.services import admin_service, conversation_service, portal_service
+from ask_gateway.services.chat_service import ChatRuntime, sse_chat
 from ask_gateway.services.errors import AuthError
 from ask_gateway.services.key_service import authenticate
 
 router = APIRouter()
+
+
+def _client_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
 
 
 def require_holder(
@@ -143,3 +162,179 @@ def my_usage(
             ],
         ),
     )
+
+
+# ---- 对话（持久化 + 分叉） ----
+
+
+@router.get("/portal/conversations", response_model=list[ConversationOut])
+def list_conversations(
+    api_key: ApiKey = Depends(require_holder),
+    session: Session = Depends(session_scope),
+) -> list[ConversationOut]:
+    return [
+        ConversationOut.model_validate(r)
+        for r in conversation_service.list_conversations(session, api_key)
+    ]
+
+
+@router.post("/portal/conversations", response_model=ConversationOut, status_code=201)
+def create_conversation(
+    payload: ConversationCreateRequest | None = None,
+    api_key: ApiKey = Depends(require_holder),
+    session: Session = Depends(session_scope),
+) -> ConversationOut:
+    return ConversationOut.model_validate(
+        conversation_service.create_conversation(
+            session, api_key, payload.title if payload else None
+        )
+    )
+
+
+@router.get(
+    "/portal/conversations/{conversation_id}", response_model=ConversationDetailOut
+)
+def get_conversation(
+    conversation_id: UUID,
+    api_key: ApiKey = Depends(require_holder),
+    session: Session = Depends(session_scope),
+) -> ConversationDetailOut:
+    row, messages = conversation_service.get_messages(session, api_key, conversation_id)
+    return ConversationDetailOut(
+        conversation=ConversationOut.model_validate(row),
+        messages=[ConversationMessageOut.model_validate(m) for m in messages],
+    )
+
+
+@router.delete("/portal/conversations/{conversation_id}", status_code=204)
+def delete_conversation(
+    conversation_id: UUID,
+    api_key: ApiKey = Depends(require_holder),
+    session: Session = Depends(session_scope),
+) -> Response:
+    conversation_service.delete_conversation(session, api_key, conversation_id)
+    return Response(status_code=204)
+
+
+@router.post(
+    "/portal/conversations/{conversation_id}/fork",
+    response_model=ConversationOut,
+    status_code=201,
+)
+def fork_conversation(
+    conversation_id: UUID,
+    payload: ConversationForkRequest | None = None,
+    api_key: ApiKey = Depends(require_holder),
+    session: Session = Depends(session_scope),
+) -> ConversationOut:
+    forked = conversation_service.fork_conversation(
+        session, api_key, conversation_id, payload.at_seq if payload else None
+    )
+    return ConversationOut.model_validate(forked)
+
+
+@router.post("/portal/conversations/{conversation_id}/chat")
+async def conversation_chat(
+    conversation_id: UUID,
+    payload: ConversationChatRequest,
+    request: Request,
+    api_key: ApiKey = Depends(require_holder),
+    session: Session = Depends(session_scope),
+) -> Response:
+    """对话内流式聊天：服务端拼历史 + 新输入，结束后自动追加两条消息。"""
+    from ask_gateway.schemas.chat import ChatCompletionRequest
+
+    runtime: ChatRuntime = request.app.state.chat_runtime
+    conversation, history = conversation_service.get_messages(
+        session, api_key, conversation_id
+    )
+    messages = [{"role": m.role, "content": m.content} for m in history]
+    messages.append({"role": "user", "content": payload.content})
+    chat_payload = ChatCompletionRequest(
+        model=payload.model,
+        messages=messages,  # type: ignore[arg-type]
+        stream=True,
+        enable_web_search=payload.enable_web_search,
+    )
+    request_id = uuid.uuid4()
+    inner = sse_chat(
+        runtime,
+        api_key=api_key,
+        payload=chat_payload,
+        request_id=request_id,
+        client_ip=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        is_disconnected=request.is_disconnected,
+    )
+
+    accumulated: dict[str, str] = {"content": "", "reasoning": ""}
+
+    def _drain(frame: object) -> object:
+        data = getattr(frame, "data", None) if not isinstance(frame, str) else None
+        if isinstance(frame, dict):
+            data = frame.get("data")
+        if not isinstance(data, str):
+            return frame
+        try:
+            parsed = json.loads(data)
+        except ValueError:
+            return frame
+        delta = (parsed.get("choices") or [{}])[0].get("delta") or {}
+        accumulated["content"] += delta.get("content") or ""
+        accumulated["reasoning"] += delta.get("reasoning_content") or ""
+        return frame
+
+    async def wrapper():
+        try:
+            async for frame in inner:
+                yield _drain(frame)
+        finally:
+            # 正常结束或断连都补录对话消息；以审计库的最终回答为权威
+            # （服务端跑完的结果），帧累积仅作库行缺失时的兜底
+            content, reasoning = accumulated["content"], accumulated["reasoning"] or None
+            authoritative = _final_answer_of(
+                request.app.state.chat_runtime, request_id
+            )
+            if authoritative and authoritative[0]:
+                content, reasoning = authoritative
+            if content:
+                def _append() -> None:
+                    with runtime.session_factory() as persist:
+                        row = persist.get(Conversation, conversation.id)
+                        if row is None:
+                            return
+                        conversation_service.append_messages(
+                            persist,
+                            row,
+                            user_content=payload.content,
+                            assistant_content=content,
+                            assistant_reasoning=reasoning,
+                            request_id=request_id,
+                        )
+                        persist.commit()
+
+                await anyio.to_thread.run_sync(_append)
+
+    return EventSourceResponse(wrapper(), headers={"X-Request-Id": str(request_id)})
+
+
+def _final_answer_of(runtime: ChatRuntime, request_id: uuid.UUID) -> tuple[str, str | None] | None:
+    from ask_gateway.models.request import RequestRecord
+
+    with runtime.session_factory() as s:
+        row = s.scalar(
+            select(RequestRecord).where(RequestRecord.request_id == request_id)
+        )
+        if row is None or not row.final_answer:
+            return None
+        # thinking 事件 payload 有两种形态：投影事件 {text} 与原始事件 {payload:{text}}
+        parts = []
+        for e in row.events:
+            if e.event_type != "thinking":
+                continue
+            text = e.payload.get("text")
+            if not isinstance(text, str):
+                nested = e.payload.get("payload")
+                text = nested.get("text", "") if isinstance(nested, dict) else ""
+            parts.append(text)
+        return row.final_answer, "".join(parts) or None

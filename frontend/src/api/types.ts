@@ -260,3 +260,27 @@ export interface PortalDashboard {
   total_input_tokens: number
   total_output_tokens: number
 }
+
+export interface Conversation {
+  id: string
+  title: string
+  forked_from_id: string | null
+  fork_point_seq: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationMessage {
+  id: string
+  seq: number
+  role: 'user' | 'assistant'
+  content: string
+  reasoning: string | null
+  request_id: string | null
+  created_at: string
+}
+
+export interface ConversationDetail {
+  conversation: Conversation
+  messages: ConversationMessage[]
+}

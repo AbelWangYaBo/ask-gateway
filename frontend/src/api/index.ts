@@ -1,4 +1,4 @@
-import { http, portalHttp } from './client'
+import { http, portalHttp, readPortalKey } from './client'
 import type {
   ApiKey,
   ApiKeyCreated,
@@ -14,6 +14,8 @@ import type {
   RequestPage,
   KeyVerifyPayload,
   KeyVerifyResult,
+  Conversation,
+  ConversationDetail,
   PortalDashboard,
   PortalProfile,
   UpstreamKey,
@@ -167,5 +169,43 @@ export const portalApi = {
         params: { group_by: groupBy, date_from: dateFrom, date_to: dateTo },
       })
       .then((r) => r.data)
+  },
+}
+
+// ---- 门户对话 ----
+
+export const conversationApi = {
+  list(): Promise<Conversation[]> {
+    return portalHttp.get('/portal/conversations').then((r) => r.data)
+  },
+  create(title?: string): Promise<Conversation> {
+    return portalHttp.post('/portal/conversations', title ? { title } : {}).then((r) => r.data)
+  },
+  detail(id: string): Promise<ConversationDetail> {
+    return portalHttp.get(`/portal/conversations/${id}`).then((r) => r.data)
+  },
+  remove(id: string): Promise<void> {
+    return portalHttp.delete(`/portal/conversations/${id}`).then(() => undefined)
+  },
+  fork(id: string, atSeq?: number): Promise<Conversation> {
+    return portalHttp
+      .post(`/portal/conversations/${id}/fork`, atSeq ? { at_seq: atSeq } : {})
+      .then((r) => r.data)
+  },
+  /** 对话内流式聊天：返回 SSE 文本流 */
+  chatStream(
+    id: string,
+    body: { content: string; model: string; enable_web_search: boolean },
+    signal: AbortSignal,
+  ): Promise<Response> {
+    return fetch(`/portal/conversations/${id}/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${readPortalKey() ?? ''}`,
+      },
+      body: JSON.stringify(body),
+      signal,
+    })
   },
 }

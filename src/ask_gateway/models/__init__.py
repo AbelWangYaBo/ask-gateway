@@ -17,4 +17,7 @@ __all__ = [
     "RequestRecord",
     "UpstreamKey",
     "UsageRecord",
+    "Conversation",
+    "ConversationMessage",
 ]
+from ask_gateway.models.conversation import Conversation, ConversationMessage
