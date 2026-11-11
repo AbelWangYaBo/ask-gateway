@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -89,6 +90,8 @@ def _chat(client: TestClient, cid: str, content: str) -> str:
         json={"content": content, "model": MODEL, "enable_web_search": False},
     )
     assert resp.status_code == 200, resp.text
+    # SSE 返回后 worker 线程的对话落库略有延迟，等它就位
+    time.sleep(0.3)
     return resp.text
 
 
@@ -109,7 +112,8 @@ def test_conversation_crud_and_append(client: TestClient) -> None:
 
     listing = client.get("/api/portal/conversations").json()
     assert any(c["id"] == cid for c in listing)
-    assert client.delete(f"/api/portal/conversations/{cid}").status_code == 204
+    # 对话不允许删除（审计与消耗的展示载体）
+    assert client.delete(f"/api/portal/conversations/{cid}").status_code == 405
 
 
 def test_fork_same_point_repeatedly(client: TestClient) -> None:

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ask_gateway.billing.cost import compute_cost, snapshot_rule
 from ask_gateway.billing.pricing import select_rule
+from ask_gateway.logging_conf import get_logger
 from ask_gateway.models.api_key import ApiKey
 from ask_gateway.models.request import (
     STATUS_CLIENT_DISCONNECTED,
@@ -60,6 +61,8 @@ from ask_gateway.services.errors import (
 )
 from ask_gateway.services.key_service import touch_last_used
 from ask_gateway.services.quota_service import QuotaService
+
+log = get_logger(component="chat-service")
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +115,7 @@ def execute_chat(
     handle = None
     slot_acquired = False
     release_broken = False
+    pending_attach = None
     collected: list[StoredEvent] = []
 
     try:
@@ -213,7 +217,9 @@ def execute_chat(
         row.finished_at = datetime.now(UTC)
         session.commit()
 
-        return _to_result(row, outcome, collected)
+        result = _to_result(row, outcome, collected)
+        pending_attach = (payload, row, outcome)
+        return result
     except ServiceError:
         raise
     except Exception as exc:  # 未预期错误：尽力留痕，不吞异常
@@ -234,6 +240,61 @@ def execute_chat(
         if handle is not None:
             runtime.pool.release(handle, broken=release_broken)
         session.close()
+        if pending_attach is not None:
+            # 对话统一记录放在主 session 关闭之后：独立连接写入，
+            # 失败只记日志，绝不影响已返回的请求结果
+            attach_payload, attach_row, attach_outcome = pending_attach
+            _attach_conversation(
+                runtime,
+                holder_name=api_key.holder_name,
+                payload=attach_payload,
+                row=attach_row,
+                outcome=attach_outcome,
+            )
+
+
+def _attach_conversation(
+    runtime: ChatRuntime,
+    *,
+    holder_name: str,
+    payload: ChatCompletionRequest,
+    row: RequestRecord,
+    outcome: RunOutcome,
+) -> None:
+    """API 与 chatbot 的统一对话记录：失败只记日志，不影响主请求结果。"""
+    from sqlalchemy import select
+
+    from ask_gateway.models.event import EventRecord
+    from ask_gateway.services import conversation_service
+
+    try:
+        with runtime.session_factory() as persist:
+            # 思考过程从审计事件取（投影 thinking），两种 payload 形态都兼容
+            parts: list[str] = []
+            for event in persist.scalars(
+                select(EventRecord).where(
+                    EventRecord.request_id == row.id,
+                    EventRecord.event_type == "thinking",
+                )
+            ):
+                text = event.payload.get("text")
+                if not isinstance(text, str):
+                    nested = event.payload.get("payload")
+                    text = nested.get("text", "") if isinstance(nested, dict) else ""
+                parts.append(text)
+            reasoning = "".join(parts) or None
+            content = outcome.final_response or f"[未完成：{row.status}]"
+            conversation_service.attach_request(
+                persist,
+                holder_name=holder_name,
+                messages=[m.model_dump(exclude_none=True) for m in payload.messages],
+                assistant_content=content,
+                assistant_reasoning=reasoning,
+                request_id=row.request_id,
+            )
+            persist.commit()
+    except Exception:  # noqa: BLE001 - 对话记录绝不能反过来打断问答
+        log.warning("conversation attach failed", holder=holder_name)
 
 
 def _persist_outcome(

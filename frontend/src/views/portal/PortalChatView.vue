@@ -13,18 +13,13 @@
           :class="{ active: c.id === currentId }"
           @click="openConversation(c.id)"
         >
-          <div class="conv-title">
-            <span v-if="c.forked_from_id" class="fork-mark">⑂</span>
-            {{ c.title }}
+          <div class="conv-meta">
+            <div class="conv-title">
+              <span v-if="c.forked_from_id" class="fork-mark">⑂</span>
+              {{ c.title }}
+            </div>
+            <div class="conv-time">{{ formatDateTime(c.updated_at) }}</div>
           </div>
-          <el-button
-            link
-            size="small"
-            class="conv-del"
-            @click.stop="removeConversation(c.id)"
-          >
-            删
-          </el-button>
         </div>
       </div>
     </el-aside>
@@ -87,11 +82,12 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { conversationApi } from '@/api'
 import type { Conversation } from '@/api/types'
 import { ApiError } from '@/api/client'
 import { parseChatDelta, SseParser } from '@/utils/sse'
+import { formatDateTime } from '@/utils/format'
 
 interface DisplayMessage {
   seq: number
@@ -161,25 +157,6 @@ async function select(conversation: Conversation | undefined) {
     scrollBottom()
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '加载对话失败')
-  }
-}
-
-async function removeConversation(id: string) {
-  try {
-    await ElMessageBox.confirm('删除该对话及其全部分支内容？', '删除确认', { type: 'warning' })
-  } catch {
-    return
-  }
-  try {
-    await conversationApi.remove(id)
-    conversations.value = conversations.value.filter((c) => c.id !== id)
-    if (currentId.value === id) {
-      currentId.value = null
-      current.value = null
-      messages.value = []
-    }
-  } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '删除失败')
   }
 }
 
@@ -346,20 +323,22 @@ onMounted(async () => {
 .conv-item.active {
   background: #dbeafe;
 }
+.conv-meta {
+  min-width: 0;
+  flex: 1;
+}
 .conv-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.conv-time {
+  font-size: 11px;
+  color: #9ca3af;
+}
 .fork-mark {
   color: #f59e0b;
   margin-right: 4px;
-}
-.conv-del {
-  visibility: hidden;
-}
-.conv-item:hover .conv-del {
-  visibility: visible;
 }
 .chat-page {
   flex: 1;

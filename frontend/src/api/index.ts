@@ -184,9 +184,6 @@ export const conversationApi = {
   detail(id: string): Promise<ConversationDetail> {
     return portalHttp.get(`/api/portal/conversations/${id}`).then((r) => r.data)
   },
-  remove(id: string): Promise<void> {
-    return portalHttp.delete(`/api/portal/conversations/${id}`).then(() => undefined)
-  },
   fork(id: string, atSeq?: number): Promise<Conversation> {
     return portalHttp
       .post(`/api/portal/conversations/${id}/fork`, atSeq ? { at_seq: atSeq } : {})

@@ -56,11 +56,6 @@ def get_messages(
     return row, list(row.messages)
 
 
-def delete_conversation(session: Session, api_key: ApiKey, conversation_id: uuid.UUID) -> None:
-    row = _get_owned(session, api_key, conversation_id)
-    session.delete(row)
-    session.flush()
-
 
 def append_messages(
     session: Session,
@@ -129,3 +124,59 @@ def fork_conversation(
         )
     session.flush()
     return forked
+
+
+def attach_request(
+    session: Session,
+    *,
+    holder_name: str,
+    messages: list[dict],
+    assistant_content: str,
+    assistant_reasoning: str | None,
+    request_id: uuid.UUID,
+) -> Conversation | None:
+    """把一次完成的请求归入对话体系（API 与 chatbot 共用同一路径）。
+
+    归并规则：请求 messages 的 user/assistant 前缀与某对话现有消息序列
+    完全一致 → 续写该对话；否则新建对话（以末条 user 消息开头）。
+    """
+    qa = [m for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
+    user_inputs = [m for m in qa if m["role"] == "user"]
+    if not user_inputs:
+        return None
+    new_user_text = str(user_inputs[-1]["content"])
+
+    expected = [(m["role"], str(m["content"])) for m in qa[:-1]]
+    candidates = list(
+        session.scalars(
+            select(Conversation)
+            .where(Conversation.holder_name == holder_name)
+            .order_by(Conversation.updated_at.desc())
+            .limit(50)
+        )
+    )
+    for conversation in candidates:
+        existing = [(m.role, m.content) for m in conversation.messages]
+        if existing == expected:
+            append_messages(
+                session,
+                conversation,
+                user_content=new_user_text,
+                assistant_content=assistant_content,
+                assistant_reasoning=assistant_reasoning,
+                request_id=request_id,
+            )
+            return conversation
+
+    conversation = Conversation(holder_name=holder_name)
+    session.add(conversation)
+    session.flush()
+    append_messages(
+        session,
+        conversation,
+        user_content=new_user_text,
+        assistant_content=assistant_content,
+        assistant_reasoning=assistant_reasoning,
+        request_id=request_id,
+    )
+    return conversation

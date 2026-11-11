@@ -6,21 +6,17 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-import anyio
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from ask_gateway.db.session import session_scope
 from ask_gateway.models.api_key import ApiKey
-from ask_gateway.models.conversation import Conversation
 from ask_gateway.schemas.admin import (
     RequestDetailOut,
     RequestListItem,
@@ -206,16 +202,6 @@ def get_conversation(
     )
 
 
-@router.delete("/conversations/{conversation_id}", status_code=204)
-def delete_conversation(
-    conversation_id: UUID,
-    api_key: ApiKey = Depends(require_holder),
-    session: Session = Depends(session_scope),
-) -> Response:
-    conversation_service.delete_conversation(session, api_key, conversation_id)
-    return Response(status_code=204)
-
-
 @router.post(
     "/conversations/{conversation_id}/fork",
     response_model=ConversationOut,
@@ -267,74 +253,11 @@ async def conversation_chat(
         is_disconnected=request.is_disconnected,
     )
 
-    accumulated: dict[str, str] = {"content": "", "reasoning": ""}
-
-    def _drain(frame: object) -> object:
-        data = getattr(frame, "data", None) if not isinstance(frame, str) else None
-        if isinstance(frame, dict):
-            data = frame.get("data")
-        if not isinstance(data, str):
-            return frame
-        try:
-            parsed = json.loads(data)
-        except ValueError:
-            return frame
-        delta = (parsed.get("choices") or [{}])[0].get("delta") or {}
-        accumulated["content"] += delta.get("content") or ""
-        accumulated["reasoning"] += delta.get("reasoning_content") or ""
-        return frame
-
     async def wrapper():
-        try:
-            async for frame in inner:
-                yield _drain(frame)
-        finally:
-            # 正常结束或断连都补录对话消息；以审计库的最终回答为权威
-            # （服务端跑完的结果），帧累积仅作库行缺失时的兜底
-            content, reasoning = accumulated["content"], accumulated["reasoning"] or None
-            authoritative = _final_answer_of(
-                request.app.state.chat_runtime, request_id
-            )
-            if authoritative and authoritative[0]:
-                content, reasoning = authoritative
-            if content:
-                def _append() -> None:
-                    with runtime.session_factory() as persist:
-                        row = persist.get(Conversation, conversation.id)
-                        if row is None:
-                            return
-                        conversation_service.append_messages(
-                            persist,
-                            row,
-                            user_content=payload.content,
-                            assistant_content=content,
-                            assistant_reasoning=reasoning,
-                            request_id=request_id,
-                        )
-                        persist.commit()
-
-                await anyio.to_thread.run_sync(_append)
+        # 对话记录统一由 execute_chat 收尾挂载（API 与 chatbot 同一路径），
+        # 断连兜底也在那里完成
+        async for frame in inner:
+            yield frame
 
     return EventSourceResponse(wrapper(), headers={"X-Request-Id": str(request_id)})
 
-
-def _final_answer_of(runtime: ChatRuntime, request_id: uuid.UUID) -> tuple[str, str | None] | None:
-    from ask_gateway.models.request import RequestRecord
-
-    with runtime.session_factory() as s:
-        row = s.scalar(
-            select(RequestRecord).where(RequestRecord.request_id == request_id)
-        )
-        if row is None or not row.final_answer:
-            return None
-        # thinking 事件 payload 有两种形态：投影事件 {text} 与原始事件 {payload:{text}}
-        parts = []
-        for e in row.events:
-            if e.event_type != "thinking":
-                continue
-            text = e.payload.get("text")
-            if not isinstance(text, str):
-                nested = e.payload.get("payload")
-                text = nested.get("text", "") if isinstance(nested, dict) else ""
-            parts.append(text)
-        return row.final_answer, "".join(parts) or None
