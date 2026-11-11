@@ -151,6 +151,8 @@ export interface PricingRule {
   weekdays_only: boolean
   is_active: boolean
   effective_from: string
+  effective_to: string | null
+  priority: number
   input_price_per_mtok: string
   output_price_per_mtok: string
   reasoning_price_per_mtok: string | null
@@ -167,6 +169,8 @@ export interface PricingPayload {
   peak_end_hour?: number | null
   weekdays_only?: boolean
   effective_from: string
+  effective_to?: string | null
+  priority?: number
   input_price_per_mtok: number | string
   output_price_per_mtok: number | string
   reasoning_price_per_mtok?: number | string | null

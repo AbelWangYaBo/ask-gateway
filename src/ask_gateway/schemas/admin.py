@@ -188,6 +188,10 @@ class PricingCreateRequest(BaseModel):
     peak_end_hour: int | None = Field(default=None, ge=1, le=24)
     weekdays_only: bool = False
     effective_from: datetime
+    # 生效周期（半开区间）；effective_to 为 NULL 表示长期有效
+    effective_to: datetime | None = None
+    # 权重：同时刻多条匹配时大者胜（常规价 0、临时优惠 1）
+    priority: int = Field(default=0)
     input_price_per_mtok: Decimal = Field(ge=0)
     output_price_per_mtok: Decimal = Field(ge=0)
     reasoning_price_per_mtok: Decimal | None = Field(default=None, ge=0)
@@ -202,6 +206,8 @@ class PricingCreateRequest(BaseModel):
             raise ValueError("peak_start_hour 与 peak_end_hour 必须同时提供或同时省略")
         if start is not None and end is not None and start >= end:
             raise ValueError("peak_start_hour 必须小于 peak_end_hour")
+        if self.effective_to is not None and self.effective_to <= self.effective_from:
+            raise ValueError("effective_to 必须晚于 effective_from")
         return self
 
 
@@ -222,6 +228,8 @@ class PricingRuleOut(BaseModel):
     weekdays_only: bool
     is_active: bool
     effective_from: datetime
+    effective_to: datetime | None
+    priority: int
     input_price_per_mtok: Decimal
     output_price_per_mtok: Decimal
     reasoning_price_per_mtok: Decimal | None

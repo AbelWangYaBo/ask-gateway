@@ -533,7 +533,7 @@ def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
     assert created.status_code == 201
     assert created.json()["peak_start_hour"] == 9
 
-    # 同模型同时段冲突
+    # 同模型同时段同权重同生效起点冲突
     conflict = client.put(
         "/api/admin/pricing",
         headers=headers,
@@ -543,7 +543,7 @@ def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
             "peak_start_hour": 9,
             "peak_end_hour": 18,
             "weekdays_only": True,
-            "effective_from": "2026-02-01T00:00:00Z",
+            "effective_from": "2026-01-01T00:00:00Z",
             "input_price_per_mtok": "1",
             "output_price_per_mtok": "1",
         },
@@ -551,19 +551,64 @@ def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "pricing_conflict"
 
-    # 第二条全时段规则与种子冲突
+    # 第二条全时段规则与种子同窗口同权重同生效起点 → 冲突
     all_day_conflict = client.put(
         "/api/admin/pricing",
         headers=headers,
         json={
             "model": MODEL,
             "rule_name": "第二条全时段",
-            "effective_from": "2026-03-01T00:00:00Z",
+            "effective_from": "2020-01-01T00:00:00Z",
             "input_price_per_mtok": "1",
             "output_price_per_mtok": "1",
         },
     )
     assert all_day_conflict.status_code == 409
+
+    # 未来生效起点不同 → 版本演进，允许提前录入（到点自动切换）
+    future = client.put(
+        "/api/admin/pricing",
+        headers=headers,
+        json={
+            "model": MODEL,
+            "rule_name": "未来调价",
+            "effective_from": "2026-12-01T00:00:00Z",
+            "input_price_per_mtok": "1",
+            "output_price_per_mtok": "1",
+        },
+    )
+    assert future.status_code == 201
+
+    # 更高权重 → 临时优惠叠加，允许并存
+    promo = client.put(
+        "/api/admin/pricing",
+        headers=headers,
+        json={
+            "model": MODEL,
+            "rule_name": "临时优惠",
+            "effective_from": "2026-11-11T00:00:00Z",
+            "effective_to": "2026-11-12T00:00:00Z",
+            "priority": 1,
+            "input_price_per_mtok": "1",
+            "output_price_per_mtok": "1",
+        },
+    )
+    assert promo.status_code == 201
+
+    # effective_to 早于 effective_from → 400
+    bad_period = client.put(
+        "/api/admin/pricing",
+        headers=headers,
+        json={
+            "model": MODEL,
+            "rule_name": "倒挂周期",
+            "effective_from": "2026-05-01T00:00:00Z",
+            "effective_to": "2026-04-01T00:00:00Z",
+            "input_price_per_mtok": "1",
+            "output_price_per_mtok": "1",
+        },
+    )
+    assert bad_period.status_code == 400
 
     # 窗口语义非法 → 400
     bad_window = client.put(
@@ -584,7 +629,8 @@ def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
     logs = client.get(
         "/api/admin/audit-logs?action=pricing_update", headers=headers
     ).json()
-    assert logs["total"] == 1
+    # 工作时段峰价 + 未来调价 + 临时优惠 三条成功创建均留痕
+    assert logs["total"] == 3
 
 
 def test_pricing_update_edit_and_toggle(client: TestClient) -> None:

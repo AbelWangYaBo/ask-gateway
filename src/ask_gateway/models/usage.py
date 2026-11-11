@@ -65,6 +65,11 @@ class PricingRule(Base, TimestampMixin):
     weekdays_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # 生效截止（不含）；NULL = 长期有效。与 effective_from 构成生效周期，
+    # 支持提前录入未来调价/临时优惠，到点自动切换或回落
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 权重：同时刻多条规则匹配时大者胜（常规价 0、临时优惠 1，优惠期整体覆盖常规）
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # 单价：每百万 token 的人民币分；搜索为每千次的分
     input_price_per_mtok: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)

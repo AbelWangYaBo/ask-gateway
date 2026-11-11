@@ -30,6 +30,8 @@ def _rule(
     weekdays_only: bool = False,
     is_active: bool = True,
     effective_from: datetime | None = None,
+    effective_to: datetime | None = None,
+    priority: int = 0,
     input_price: str = "200.0000",
     output_price: str = "800.0000",
     reasoning_price: str | None = None,
@@ -45,6 +47,8 @@ def _rule(
         weekdays_only=weekdays_only,
         is_active=is_active,
         effective_from=effective_from or datetime(2026, 1, 1, tzinfo=UTC),
+        effective_to=effective_to,
+        priority=priority,
         input_price_per_mtok=Decimal(input_price),
         output_price_per_mtok=Decimal(output_price),
         reasoning_price_per_mtok=Decimal(reasoning_price) if reasoning_price else None,
@@ -114,6 +118,44 @@ def test_select_rule_respects_effective_from_and_model(db_session: Session) -> N
     assert select_rule(db_session, "other-model", _bj("2026-11-09", 10)) is None
 
 
+def test_select_rule_priority_overrides_lower_weight(db_session: Session) -> None:
+    """临时优惠（权重 1）在生效周期内整体覆盖常规价（权重 0），到期回落。"""
+    regular = _rule(rule_name="常规价")
+    promo = _rule(
+        rule_name="双11优惠",
+        effective_from=datetime(2026, 11, 11, tzinfo=UTC),
+        effective_to=datetime(2026, 11, 12, tzinfo=UTC),
+        priority=1,
+        input_price="50.0000",
+    )
+    db_session.add_all([regular, promo])
+    db_session.flush()
+
+    # 优惠期内：优惠覆盖常规（也覆盖窗口规则）
+    chosen = select_rule(db_session, "deepseek-flash", _bj("2026-11-11", 15))
+    assert chosen is not None and chosen.rule_name == "双11优惠"
+    # 优惠期外：回落常规
+    chosen = select_rule(db_session, "deepseek-flash", _bj("2026-11-13", 15))
+    assert chosen is not None and chosen.rule_name == "常规价"
+
+
+def test_select_rule_future_price_switches_at_from(db_session: Session) -> None:
+    """提前录入未来调价：effective_from 到点自动切换，无需人工改库。"""
+    old = _rule(rule_name="现行价", effective_from=datetime(2026, 1, 1, tzinfo=UTC))
+    new = _rule(
+        rule_name="12月新价",
+        effective_from=datetime(2026, 12, 1, tzinfo=UTC),
+        input_price="300.0000",
+    )
+    db_session.add_all([old, new])
+    db_session.flush()
+
+    chosen = select_rule(db_session, "deepseek-flash", _bj("2026-11-30", 23))
+    assert chosen is not None and chosen.rule_name == "现行价"
+    chosen = select_rule(db_session, "deepseek-flash", _bj("2026-12-01", 0))
+    assert chosen is not None and chosen.rule_name == "12月新价"
+
+
 def test_select_rule_ignores_inactive(db_session: Session) -> None:
     db_session.add(_rule(is_active=False))
     db_session.flush()
@@ -121,19 +163,45 @@ def test_select_rule_ignores_inactive(db_session: Session) -> None:
 
 
 def test_overlap_validation(db_session: Session) -> None:
-    db_session.add(_rule())
+    seed_from = datetime(2026, 1, 1, tzinfo=UTC)
+    db_session.add(_rule(effective_from=seed_from))
     db_session.flush()
 
+    # 同窗口同权重同生效起点 → 冲突
     with pytest.raises(PricingConflictError):
-        assert_no_active_overlap(db_session, "deepseek-flash", None, None, False)
+        assert_no_active_overlap(
+            db_session, "deepseek-flash", None, None, False, effective_from=seed_from
+        )
+
+    # 同窗口同权重但生效起点不同 → 版本演进（提前录入未来调价），允许
+    assert_no_active_overlap(
+        db_session,
+        "deepseek-flash",
+        None,
+        None,
+        False,
+        effective_from=datetime(2026, 12, 1, tzinfo=UTC),
+    )
+
+    # 同窗口同起点但权重不同 → 临时优惠叠加，允许
+    assert_no_active_overlap(
+        db_session, "deepseek-flash", None, None, False, effective_from=seed_from, priority=1
+    )
 
     # 不同时段窗口不冲突
     db_session.add(_rule(rule_name="晚高峰", peak_start=19, peak_end=23))
     db_session.flush()
     assert_no_active_overlap(db_session, "deepseek-flash", 10, 12, False)
-    # 同窗口冲突
+    # 同窗口同起点冲突
     with pytest.raises(PricingConflictError):
-        assert_no_active_overlap(db_session, "deepseek-flash", 19, 23, False)
+        assert_no_active_overlap(
+            db_session,
+            "deepseek-flash",
+            19,
+            23,
+            False,
+            effective_from=datetime(2026, 1, 1, tzinfo=UTC),
+        )
     # 不同模型不冲突
     assert_no_active_overlap(db_session, "other-model", None, None, False)
 

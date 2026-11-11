@@ -25,6 +25,8 @@ def snapshot_rule(rule: PricingRule) -> dict:
         "peak_end_hour": rule.peak_end_hour,
         "weekdays_only": rule.weekdays_only,
         "effective_from": rule.effective_from.isoformat(),
+        "effective_to": rule.effective_to.isoformat() if rule.effective_to else None,
+        "priority": rule.priority,
         "input_price_per_mtok": str(rule.input_price_per_mtok),
         "output_price_per_mtok": str(rule.output_price_per_mtok),
         "reasoning_price_per_mtok": (

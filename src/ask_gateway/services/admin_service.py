@@ -432,6 +432,8 @@ def create_pricing_rule(
         payload.peak_start_hour,
         payload.peak_end_hour,
         payload.weekdays_only,
+        effective_from=payload.effective_from,
+        priority=payload.priority,
     )
     rule = PricingRule(**payload.model_dump())
     session.add(rule)
@@ -469,6 +471,8 @@ def update_pricing_rule(
             payload.peak_end_hour,
             payload.weekdays_only,
             exclude_id=rule.id,
+            effective_from=payload.effective_from,
+            priority=payload.priority,
         )
     for field, value in payload.model_dump().items():
         setattr(rule, field, value)
