@@ -51,6 +51,13 @@ class PricingConflictError(ServiceError):
         super().__init__("pricing_conflict", message)
 
 
+class PricingNotFoundError(ServiceError):
+    http_status = 404
+
+    def __init__(self, rule_id: str) -> None:
+        super().__init__("pricing_not_found", f"pricing rule {rule_id} not found")
+
+
 class ModelNotAllowedError(ServiceError):
     http_status = 400
 

@@ -90,6 +90,9 @@ export const pricingApi = {
   create(payload: PricingPayload): Promise<PricingRule> {
     return http.put('/api/admin/pricing', payload).then((r) => r.data)
   },
+  update(id: string, payload: PricingPayload): Promise<PricingRule> {
+    return http.put(`/api/admin/pricing/${id}`, payload).then((r) => r.data)
+  },
 }
 
 // ---- 管理操作日志 ----

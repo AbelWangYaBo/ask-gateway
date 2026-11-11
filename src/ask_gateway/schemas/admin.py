@@ -205,6 +205,12 @@ class PricingCreateRequest(BaseModel):
         return self
 
 
+class PricingUpdateRequest(PricingCreateRequest):
+    """编辑定价规则：全量字段 + 启停；usage 落库时已冻结快照，改规则不影响历史账单。"""
+
+    is_active: bool = True
+
+
 class PricingRuleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

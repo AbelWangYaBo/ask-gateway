@@ -587,6 +587,95 @@ def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
     assert logs["total"] == 1
 
 
+def test_pricing_update_edit_and_toggle(client: TestClient) -> None:
+    """编辑规则：改价生效、冲突窗口 409、停用/启用、404。"""
+    token = _login(client)
+    headers = _auth(token)
+    rules = client.get("/api/admin/pricing", headers=headers).json()
+    rule_id = rules[0]["id"]
+
+    # 编辑改价（复用种子行，排除自身不判冲突）
+    edited = client.put(
+        f"/api/admin/pricing/{rule_id}",
+        headers=headers,
+        json={
+            "model": rules[0]["model"],
+            "rule_name": rules[0]["rule_name"],
+            "effective_from": "2026-01-01T00:00:00Z",
+            "input_price_per_mtok": "120.5000",
+            "output_price_per_mtok": "500.0000",
+            "is_active": True,
+        },
+    )
+    assert edited.status_code == 200
+    assert edited.json()["input_price_per_mtok"] == "120.5000"
+
+    # 新建工作日窗口规则后，把种子行改成同窗口 → 409
+    created = client.put(
+        "/api/admin/pricing",
+        headers=headers,
+        json={
+            "model": rules[0]["model"],
+            "rule_name": "工作日窗口",
+            "peak_start_hour": 9,
+            "peak_end_hour": 12,
+            "weekdays_only": True,
+            "effective_from": "2026-01-01T00:00:00Z",
+            "input_price_per_mtok": "1",
+            "output_price_per_mtok": "1",
+        },
+    )
+    assert created.status_code == 201
+    conflict = client.put(
+        f"/api/admin/pricing/{rule_id}",
+        headers=headers,
+        json={
+            "model": rules[0]["model"],
+            "rule_name": rules[0]["rule_name"],
+            "peak_start_hour": 9,
+            "peak_end_hour": 12,
+            "weekdays_only": True,
+            "effective_from": "2026-01-01T00:00:00Z",
+            "input_price_per_mtok": "1",
+            "output_price_per_mtok": "1",
+        },
+    )
+    assert conflict.status_code == 409
+
+    # 停用后同窗口可再改回（自身 inactive 不参与冲突判定）
+    disabled = client.put(
+        f"/api/admin/pricing/{rule_id}",
+        headers=headers,
+        json={
+            "model": rules[0]["model"],
+            "rule_name": rules[0]["rule_name"],
+            "peak_start_hour": 9,
+            "peak_end_hour": 12,
+            "weekdays_only": True,
+            "effective_from": "2026-01-01T00:00:00Z",
+            "input_price_per_mtok": "1",
+            "output_price_per_mtok": "1",
+            "is_active": False,
+        },
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["is_active"] is False
+
+    # 不存在的规则 → 404
+    missing = client.put(
+        "/api/admin/pricing/00000000-0000-0000-0000-000000000000",
+        headers=headers,
+        json={
+            "model": rules[0]["model"],
+            "rule_name": "不存在",
+            "effective_from": "2026-01-01T00:00:00Z",
+            "input_price_per_mtok": "1",
+            "output_price_per_mtok": "1",
+        },
+    )
+    assert missing.status_code == 404
+
+
 # ---------- 审计日志与看板 ----------
 
 

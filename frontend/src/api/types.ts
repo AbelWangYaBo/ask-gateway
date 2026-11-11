@@ -173,6 +173,7 @@ export interface PricingPayload {
   cache_read_price_per_mtok?: number | string | null
   cache_write_price_per_mtok?: number | string | null
   search_price_per_k?: number | string
+  is_active?: boolean
 }
 
 export interface AuditLog {

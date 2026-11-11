@@ -13,7 +13,8 @@
 ## 1. 启动与迁移（一次性命令不进 lifespan）
 
 - [ ] `uv run alembic upgrade head` 建表 9 张；重复执行无副作用
-- [ ] `uv run python scripts/seed_pricing.py` 写入 4 条峰谷定价；重复执行跳过不重复
+- [ ] `uv run python scripts/seed_pricing.py` 写入 6 条峰谷定价（空闲全时段 + 工作日
+      9–12 / 14–18 两段高峰 × 2 模型）；重复执行跳过不重复
 - [ ] `uv run python dsh_profile/build_profile.py` 输出 `profile built`，
       `data/dsh/homes/upstream-1/profiles/ask-gateway/cordis.patch.yml` 存在
 - [ ] 启动 `uv run uvicorn ask_gateway.main:app`，日志出现池预热，无异常堆栈
@@ -60,7 +61,8 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 - [ ] 把某 Key 的 `rpm_limit` 调成 1，连发请求：超限返回 429 风格错误信封
 - [ ] `daily_budget_cents` 调到极小值：预算耗尽后新请求被拒，已有记录不受影响
 - [ ] `max_concurrency` 调 1：并发请求中超出的排队，超过 `POOL_ACQUIRE_TIMEOUT_SECONDS` 失败
-- [ ] 高峰时段（16:00–24:00）的请求按高峰定价快照，其余按全时段定价
+- [ ] 高峰时段（工作日 9–12、14–18，北京时区）的请求按高峰定价快照，
+      其余时段（含午休 12–14、周末）按空闲全时段定价
 
 ## 6. 安全核对
 
@@ -96,4 +98,7 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 
 - [ ] 真实 DSH 通知形状与 `EventProjector` 投影的一致性（`network` 标记冒烟）
 - [ ] 请求级联网搜索开关经 SDK patches/system prompt 的实际生效方式
-- [ ] 定价种子为量级占位，上线前按 DeepSeek 官方 2026 人民币报价在控制台核对修订
+- [x] 定价按 DeepSeek 官方 2026 报价核对（2026-11-11，
+      api-docs.deepseek.com/zh-cn/quick_start/pricing）；官方排除法定节假日，
+      现按「工作日」近似，节假日误计高峰可临时停用高峰档
+- [ ] 官方调价后通过控制台「定价规则」编辑或停用旧档，无需改代码

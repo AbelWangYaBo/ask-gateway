@@ -25,6 +25,8 @@ onMounted(load)
 
 const dialogVisible = ref(false)
 const submitting = ref(false)
+// null = 新建；非 null = 编辑该规则
+const editingId = ref<string | null>(null)
 const form = reactive({
   model: 'deepseek-flash',
   rule_name: '',
@@ -36,9 +38,11 @@ const form = reactive({
   output_price_per_mtok: null as number | null,
   cache_read_price_per_mtok: null as number | null,
   search_price_per_k: 0,
+  is_active: true,
 })
 
 function openCreate() {
+  editingId.value = null
   form.model = 'deepseek-flash'
   form.rule_name = ''
   form.peak_start_hour = null
@@ -49,6 +53,24 @@ function openCreate() {
   form.output_price_per_mtok = null
   form.cache_read_price_per_mtok = null
   form.search_price_per_k = 0
+  form.is_active = true
+  dialogVisible.value = true
+}
+
+function openEdit(row: PricingRule) {
+  editingId.value = row.id
+  form.model = row.model
+  form.rule_name = row.rule_name
+  form.peak_start_hour = row.peak_start_hour
+  form.peak_end_hour = row.peak_end_hour
+  form.weekdays_only = row.weekdays_only
+  form.effective_from = new Date(row.effective_from)
+  form.input_price_per_mtok = Number(row.input_price_per_mtok)
+  form.output_price_per_mtok = Number(row.output_price_per_mtok)
+  form.cache_read_price_per_mtok =
+    row.cache_read_price_per_mtok === null ? null : Number(row.cache_read_price_per_mtok)
+  form.search_price_per_k = Number(row.search_price_per_k)
+  form.is_active = row.is_active
   dialogVisible.value = true
 }
 
@@ -73,23 +95,54 @@ async function submit() {
     output_price_per_mtok: form.output_price_per_mtok,
     cache_read_price_per_mtok: form.cache_read_price_per_mtok,
     search_price_per_k: form.search_price_per_k,
+    is_active: form.is_active,
   }
   submitting.value = true
   try {
-    await pricingApi.create(payload)
-    ElMessage.success('规则已创建')
+    if (editingId.value) {
+      await pricingApi.update(editingId.value, payload)
+      ElMessage.success('规则已保存')
+    } else {
+      await pricingApi.create(payload)
+      ElMessage.success('规则已创建')
+    }
     dialogVisible.value = false
     await load()
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '创建失败')
+    ElMessage.error(error instanceof ApiError ? error.message : '保存失败')
   } finally {
     submitting.value = false
   }
 }
 
+/** 快速启停：以该行现行值整体提交，仅翻转 is_active */
+async function toggleActive(row: PricingRule) {
+  const payload: PricingPayload = {
+    model: row.model,
+    rule_name: row.rule_name,
+    peak_start_hour: row.peak_start_hour,
+    peak_end_hour: row.peak_end_hour,
+    weekdays_only: row.weekdays_only,
+    effective_from: row.effective_from,
+    input_price_per_mtok: row.input_price_per_mtok,
+    output_price_per_mtok: row.output_price_per_mtok,
+    cache_read_price_per_mtok: row.cache_read_price_per_mtok,
+    search_price_per_k: row.search_price_per_k,
+    is_active: !row.is_active,
+  }
+  try {
+    await pricingApi.update(row.id, payload)
+    ElMessage.success(row.is_active ? '已停用' : '已启用')
+    await load()
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '操作失败')
+  }
+}
+
 function windowText(row: PricingRule): string {
   if (row.peak_start_hour === null || row.peak_end_hour === null) return '全时段'
-  return `每日 ${row.peak_start_hour}:00–${row.peak_end_hour}:00（北京时区）`
+  const scope = row.weekdays_only ? '工作日' : '每日'
+  return `${scope} ${row.peak_start_hour}:00–${row.peak_end_hour}:00（北京时区）`
 }
 </script>
 
@@ -126,16 +179,24 @@ function windowText(row: PricingRule): string {
         <el-table-column label="生效时间" width="180">
           <template #default="{ row }">{{ formatDateTime(row.effective_from) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button link :type="row.is_active ? 'danger' : 'success'" size="small" @click="toggleActive(row)">
+              {{ row.is_active ? '停用' : '启用' }}
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" title="新建定价规则" width="560px">
+    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑定价规则' : '新建定价规则'" width="560px">
       <el-form label-position="top">
         <el-form-item label="模型" required>
           <el-input v-model="form.model" placeholder="deepseek-flash / deepseek-v4-pro" />
         </el-form-item>
         <el-form-item label="规则名" required>
-          <el-input v-model="form.rule_name" placeholder="例如：flash 高峰档(16-24)" />
+          <el-input v-model="form.rule_name" placeholder="例如：flash 高峰档(工作日9-12)" />
         </el-form-item>
         <el-form-item label="高峰窗口（留空为全时段规则；小时，左闭右开）">
           <div class="window-row">
@@ -146,6 +207,7 @@ function windowText(row: PricingRule): string {
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="form.weekdays_only">仅工作日生效</el-checkbox>
+          <el-checkbox v-model="form.is_active">启用</el-checkbox>
         </el-form-item>
         <el-form-item label="生效时间" required>
           <el-date-picker v-model="form.effective_from" type="datetime" />
@@ -165,7 +227,9 @@ function windowText(row: PricingRule): string {
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submit">创建</el-button>
+        <el-button type="primary" :loading="submitting" @click="submit">
+          {{ editingId ? '保存' : '创建' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>

@@ -30,6 +30,7 @@ from ask_gateway.schemas.admin import (
     LoginResponse,
     PricingCreateRequest,
     PricingRuleOut,
+    PricingUpdateRequest,
     QuotaUpdateRequest,
     RequestDetailOut,
     RequestListItem,
@@ -355,6 +356,21 @@ def create_pricing_rule(
     session: Session = Depends(session_scope),
 ) -> PricingRuleOut:
     row = admin_service.create_pricing_rule(session, payload, _client_ip(request))
+    return PricingRuleOut.model_validate(row)
+
+
+@router.put(
+    "/api/admin/pricing/{rule_id}",
+    response_model=PricingRuleOut,
+    dependencies=[Depends(require_admin)],
+)
+def update_pricing_rule(
+    rule_id: UUID,
+    payload: PricingUpdateRequest,
+    request: Request,
+    session: Session = Depends(session_scope),
+) -> PricingRuleOut:
+    row = admin_service.update_pricing_rule(session, rule_id, payload, _client_ip(request))
     return PricingRuleOut.model_validate(row)
 
 

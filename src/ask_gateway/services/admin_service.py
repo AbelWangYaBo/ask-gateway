@@ -24,10 +24,11 @@ from ask_gateway.models.usage import PricingRule
 from ask_gateway.schemas.admin import (
     KeyCreateRequest,
     PricingCreateRequest,
+    PricingUpdateRequest,
     QuotaUpdateRequest,
 )
 from ask_gateway.services import audit_service, key_service
-from ask_gateway.services.errors import RequestNotFoundError
+from ask_gateway.services.errors import PricingNotFoundError, RequestNotFoundError
 from ask_gateway.services.quota_service import beijing_day_bounds_utc
 
 
@@ -441,6 +442,43 @@ def create_pricing_rule(
         target_type="pricing_rule",
         target_id=str(rule.id),
         detail={"model": rule.model, "rule_name": rule.rule_name},
+        client_ip=client_ip,
+    )
+    return rule
+
+
+def update_pricing_rule(
+    session: Session,
+    rule_id: UUID,
+    payload: PricingUpdateRequest,
+    client_ip: str | None,
+) -> PricingRule:
+    """编辑规则：全量覆盖可变字段并支持启停。
+
+    usage 落库时已冻结 pricing_snapshot，此处修改只影响之后的请求计费。
+    """
+    rule = session.get(PricingRule, rule_id)
+    if rule is None:
+        raise PricingNotFoundError(str(rule_id))
+    # 停用不产生新的 active 冲突，跳过窗口查重（例如停用同时改窗口收尾）
+    if payload.is_active:
+        assert_no_active_overlap(
+            session,
+            payload.model,
+            payload.peak_start_hour,
+            payload.peak_end_hour,
+            payload.weekdays_only,
+            exclude_id=rule.id,
+        )
+    for field, value in payload.model_dump().items():
+        setattr(rule, field, value)
+    session.flush()
+    audit_service.log_admin_action(
+        session,
+        "pricing_update",
+        target_type="pricing_rule",
+        target_id=str(rule.id),
+        detail={"model": rule.model, "rule_name": rule.rule_name, "op": "edit"},
         client_ip=client_ip,
     )
     return rule
