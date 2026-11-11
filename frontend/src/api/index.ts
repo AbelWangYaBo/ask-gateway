@@ -27,7 +27,7 @@ import type {
 
 export const authApi = {
   login(password: string): Promise<LoginResponse> {
-    return http.post('/admin/auth/login', { password }).then((r) => r.data)
+    return http.post('/api/admin/auth/login', { password }).then((r) => r.data)
   },
 }
 
@@ -35,19 +35,19 @@ export const authApi = {
 
 export const keysApi = {
   list(): Promise<ApiKey[]> {
-    return http.get('/admin/keys').then((r) => r.data)
+    return http.get('/api/admin/keys').then((r) => r.data)
   },
   create(payload: KeyCreatePayload): Promise<ApiKeyCreated> {
-    return http.post('/admin/keys', payload).then((r) => r.data)
+    return http.post('/api/admin/keys', payload).then((r) => r.data)
   },
   revoke(keyId: string): Promise<ApiKey> {
-    return http.post(`/admin/keys/${keyId}/revoke`).then((r) => r.data)
+    return http.post(`/api/admin/keys/${keyId}/revoke`).then((r) => r.data)
   },
   updateQuota(keyId: string, payload: QuotaPayload): Promise<ApiKey> {
-    return http.patch(`/admin/keys/${keyId}`, payload).then((r) => r.data)
+    return http.patch(`/api/admin/keys/${keyId}`, payload).then((r) => r.data)
   },
   verify(payload: KeyVerifyPayload): Promise<KeyVerifyResult> {
-    return http.post('/admin/keys/verify', payload).then((r) => r.data)
+    return http.post('/api/admin/keys/verify', payload).then((r) => r.data)
   },
 }
 
@@ -55,13 +55,13 @@ export const keysApi = {
 
 export const requestsApi = {
   list(filters: RequestFilters): Promise<RequestPage> {
-    return http.get('/admin/requests', { params: filters }).then((r) => r.data)
+    return http.get('/api/admin/requests', { params: filters }).then((r) => r.data)
   },
   detail(requestId: string): Promise<RequestDetail> {
-    return http.get(`/admin/requests/${requestId}`).then((r) => r.data)
+    return http.get(`/api/admin/requests/${requestId}`).then((r) => r.data)
   },
   exportUrl(requestId: string): string {
-    return `/admin/requests/${requestId}/export`
+    return `/api/admin/requests/${requestId}/export`
   },
 }
 
@@ -74,7 +74,7 @@ export const usageApi = {
     dateTo?: string,
   ): Promise<UsageSummary> {
     return http
-      .get('/admin/usage/summary', {
+      .get('/api/admin/usage/summary', {
         params: { group_by: groupBy, date_from: dateFrom, date_to: dateTo },
       })
       .then((r) => r.data)
@@ -85,10 +85,10 @@ export const usageApi = {
 
 export const pricingApi = {
   list(): Promise<PricingRule[]> {
-    return http.get('/admin/pricing').then((r) => r.data)
+    return http.get('/api/admin/pricing').then((r) => r.data)
   },
   create(payload: PricingPayload): Promise<PricingRule> {
-    return http.put('/admin/pricing', payload).then((r) => r.data)
+    return http.put('/api/admin/pricing', payload).then((r) => r.data)
   },
 }
 
@@ -101,7 +101,7 @@ export const auditLogApi = {
     pageSize: number,
   ): Promise<AuditLogPage> {
     return http
-      .get('/admin/audit-logs', {
+      .get('/api/admin/audit-logs', {
         params: { action, page, page_size: pageSize },
       })
       .then((r) => r.data)
@@ -112,7 +112,7 @@ export const auditLogApi = {
 
 export const dashboardApi = {
   get(): Promise<Dashboard> {
-    return http.get('/admin/dashboard').then((r) => r.data)
+    return http.get('/api/admin/dashboard').then((r) => r.data)
   },
 }
 
@@ -120,16 +120,16 @@ export const dashboardApi = {
 
 export const upstreamKeysApi = {
   list(): Promise<UpstreamKey[]> {
-    return http.get('/admin/upstream-keys').then((r) => r.data)
+    return http.get('/api/admin/upstream-keys').then((r) => r.data)
   },
   create(payload: UpstreamKeyPayload): Promise<UpstreamKey> {
-    return http.post('/admin/upstream-keys', payload).then((r) => r.data)
+    return http.post('/api/admin/upstream-keys', payload).then((r) => r.data)
   },
   update(keyId: string, payload: Partial<UpstreamKeyPayload> & { is_active?: boolean }): Promise<UpstreamKey> {
-    return http.patch(`/admin/upstream-keys/${keyId}`, payload).then((r) => r.data)
+    return http.patch(`/api/admin/upstream-keys/${keyId}`, payload).then((r) => r.data)
   },
   remove(keyId: string): Promise<void> {
-    return http.delete(`/admin/upstream-keys/${keyId}`).then(() => undefined)
+    return http.delete(`/api/admin/upstream-keys/${keyId}`).then(() => undefined)
   },
 }
 
@@ -138,14 +138,14 @@ export const upstreamKeysApi = {
 export const portalApi = {
   login(apiKey: string): Promise<PortalProfile> {
     return portalHttp
-      .get('/portal/profile', { headers: { Authorization: `Bearer ${apiKey}` } })
+      .get('/api/portal/profile', { headers: { Authorization: `Bearer ${apiKey}` } })
       .then((r) => r.data)
   },
   profile(): Promise<PortalProfile> {
-    return portalHttp.get('/portal/profile').then((r) => r.data)
+    return portalHttp.get('/api/portal/profile').then((r) => r.data)
   },
   dashboard(): Promise<PortalDashboard> {
-    return portalHttp.get('/portal/dashboard').then((r) => r.data)
+    return portalHttp.get('/api/portal/dashboard').then((r) => r.data)
   },
   requests(filters: {
     status?: string
@@ -154,10 +154,10 @@ export const portalApi = {
     page?: number
     page_size?: number
   }): Promise<RequestPage> {
-    return portalHttp.get('/portal/requests', { params: filters }).then((r) => r.data)
+    return portalHttp.get('/api/portal/requests', { params: filters }).then((r) => r.data)
   },
   requestDetail(requestId: string): Promise<RequestDetail> {
-    return portalHttp.get(`/portal/requests/${requestId}`).then((r) => r.data)
+    return portalHttp.get(`/api/portal/requests/${requestId}`).then((r) => r.data)
   },
   usage(
     groupBy: 'key' | 'model' | 'day',
@@ -165,7 +165,7 @@ export const portalApi = {
     dateTo?: string,
   ): Promise<UsageSummary> {
     return portalHttp
-      .get('/portal/usage/summary', {
+      .get('/api/portal/usage/summary', {
         params: { group_by: groupBy, date_from: dateFrom, date_to: dateTo },
       })
       .then((r) => r.data)
@@ -176,20 +176,20 @@ export const portalApi = {
 
 export const conversationApi = {
   list(): Promise<Conversation[]> {
-    return portalHttp.get('/portal/conversations').then((r) => r.data)
+    return portalHttp.get('/api/portal/conversations').then((r) => r.data)
   },
   create(title?: string): Promise<Conversation> {
-    return portalHttp.post('/portal/conversations', title ? { title } : {}).then((r) => r.data)
+    return portalHttp.post('/api/portal/conversations', title ? { title } : {}).then((r) => r.data)
   },
   detail(id: string): Promise<ConversationDetail> {
-    return portalHttp.get(`/portal/conversations/${id}`).then((r) => r.data)
+    return portalHttp.get(`/api/portal/conversations/${id}`).then((r) => r.data)
   },
   remove(id: string): Promise<void> {
-    return portalHttp.delete(`/portal/conversations/${id}`).then(() => undefined)
+    return portalHttp.delete(`/api/portal/conversations/${id}`).then(() => undefined)
   },
   fork(id: string, atSeq?: number): Promise<Conversation> {
     return portalHttp
-      .post(`/portal/conversations/${id}/fork`, atSeq ? { at_seq: atSeq } : {})
+      .post(`/api/portal/conversations/${id}/fork`, atSeq ? { at_seq: atSeq } : {})
       .then((r) => r.data)
   },
   /** 对话内流式聊天：返回 SSE 文本流 */
@@ -198,7 +198,7 @@ export const conversationApi = {
     body: { content: string; model: string; enable_web_search: boolean },
     signal: AbortSignal,
   ): Promise<Response> {
-    return fetch(`/portal/conversations/${id}/chat`, {
+    return fetch(`/api/portal/conversations/${id}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

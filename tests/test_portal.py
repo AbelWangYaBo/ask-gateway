@@ -42,13 +42,13 @@ def test_profile_and_dashboard_with_api_key(client, engine) -> None:
     plaintext = _make_key(engine, "alice", "工作机")
     headers = {"Authorization": f"Bearer {plaintext}"}
 
-    profile = client.get("/portal/profile", headers=headers)
+    profile = client.get("/api/portal/profile", headers=headers)
     assert profile.status_code == 200
     body = profile.json()
     assert body["holder_name"] == "alice"
     assert len(body["keys"]) == 1 and body["keys"][0]["label"] == "工作机"
 
-    dash = client.get("/portal/dashboard", headers=headers)
+    dash = client.get("/api/portal/dashboard", headers=headers)
     assert dash.status_code == 200
     assert dash.json()["total_requests"] == 0
 
@@ -56,10 +56,10 @@ def test_profile_and_dashboard_with_api_key(client, engine) -> None:
 def test_portal_requires_valid_key(client, engine) -> None:
     _make_key(engine, "alice", "k")
     # 未带 Key / 伪造 Key 均 401
-    assert client.get("/portal/profile").status_code == 401
+    assert client.get("/api/portal/profile").status_code == 401
     assert (
         client.get(
-            "/portal/profile", headers={"Authorization": "Bearer sk-fake-none"}
+            "/api/portal/profile", headers={"Authorization": "Bearer sk-fake-none"}
         ).status_code
         == 401
     )
@@ -87,24 +87,24 @@ def test_portal_isolation_between_holders(client, engine) -> None:
 
     # alice 能看到自己的请求；bob 看到空
     alice_list = client.get(
-        "/portal/requests", headers={"Authorization": f"Bearer {alice_key}"}
+        "/api/portal/requests", headers={"Authorization": f"Bearer {alice_key}"}
     )
     assert alice_list.status_code == 200 and alice_list.json()["total"] == 1
     bob_list = client.get(
-        "/portal/requests", headers={"Authorization": f"Bearer {bob_key}"}
+        "/api/portal/requests", headers={"Authorization": f"Bearer {bob_key}"}
     )
     assert bob_list.status_code == 200 and bob_list.json()["total"] == 0
 
     # bob 无法用 id 探测 alice 的请求详情（404 而非 200）
     rid = alice_list.json()["items"][0]["request_id"]
     resp = client.get(
-        f"/portal/requests/{rid}", headers={"Authorization": f"Bearer {bob_key}"}
+        f"/api/portal/requests/{rid}", headers={"Authorization": f"Bearer {bob_key}"}
     )
     assert resp.status_code == 404
     # alice 自己能看
     assert (
         client.get(
-            f"/portal/requests/{rid}", headers={"Authorization": f"Bearer {alice_key}"}
+            f"/api/portal/requests/{rid}", headers={"Authorization": f"Bearer {alice_key}"}
         ).status_code
         == 200
     )
@@ -113,7 +113,7 @@ def test_portal_isolation_between_holders(client, engine) -> None:
 def test_portal_usage_grouped_by_day(client, engine) -> None:
     plaintext = _make_key(engine, "carol", "c")
     resp = client.get(
-        "/portal/usage/summary",
+        "/api/portal/usage/summary",
         params={"group_by": "day"},
         headers={"Authorization": f"Bearer {plaintext}"},
     )

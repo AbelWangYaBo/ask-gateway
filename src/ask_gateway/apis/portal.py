@@ -44,7 +44,7 @@ from ask_gateway.services.chat_service import ChatRuntime, sse_chat
 from ask_gateway.services.errors import AuthError
 from ask_gateway.services.key_service import authenticate
 
-router = APIRouter()
+router = APIRouter(prefix="/api/portal")
 
 
 def _client_ip(request: Request) -> str | None:
@@ -64,7 +64,7 @@ def require_holder(
     return api_key
 
 
-@router.get("/portal/profile", response_model=PortalProfileOut)
+@router.get("/profile", response_model=PortalProfileOut)
 def get_profile(
     api_key: ApiKey = Depends(require_holder),
     session: Session = Depends(session_scope),
@@ -72,7 +72,7 @@ def get_profile(
     return PortalProfileOut.model_validate(portal_service.profile(session, api_key))
 
 
-@router.get("/portal/dashboard", response_model=PortalDashboardOut)
+@router.get("/dashboard", response_model=PortalDashboardOut)
 def get_dashboard(
     api_key: ApiKey = Depends(require_holder),
     session: Session = Depends(session_scope),
@@ -82,7 +82,7 @@ def get_dashboard(
     )
 
 
-@router.get("/portal/requests", response_model=RequestPage)
+@router.get("/requests", response_model=RequestPage)
 def list_my_requests(
     status: str | None = None,
     date_from: datetime | None = None,
@@ -109,7 +109,7 @@ def list_my_requests(
     )
 
 
-@router.get("/portal/requests/{request_id}", response_model=RequestDetailOut)
+@router.get("/requests/{request_id}", response_model=RequestDetailOut)
 def get_my_request(
     request_id: UUID,
     api_key: ApiKey = Depends(require_holder),
@@ -121,7 +121,7 @@ def get_my_request(
     return detail
 
 
-@router.get("/portal/usage/summary", response_model=UsageSummaryOut)
+@router.get("/usage/summary", response_model=UsageSummaryOut)
 def my_usage(
     group_by: Literal["key", "model", "day"] = "day",
     date_from: datetime | None = None,
@@ -167,7 +167,7 @@ def my_usage(
 # ---- 对话（持久化 + 分叉） ----
 
 
-@router.get("/portal/conversations", response_model=list[ConversationOut])
+@router.get("/conversations", response_model=list[ConversationOut])
 def list_conversations(
     api_key: ApiKey = Depends(require_holder),
     session: Session = Depends(session_scope),
@@ -178,7 +178,7 @@ def list_conversations(
     ]
 
 
-@router.post("/portal/conversations", response_model=ConversationOut, status_code=201)
+@router.post("/conversations", response_model=ConversationOut, status_code=201)
 def create_conversation(
     payload: ConversationCreateRequest | None = None,
     api_key: ApiKey = Depends(require_holder),
@@ -192,7 +192,7 @@ def create_conversation(
 
 
 @router.get(
-    "/portal/conversations/{conversation_id}", response_model=ConversationDetailOut
+    "/conversations/{conversation_id}", response_model=ConversationDetailOut
 )
 def get_conversation(
     conversation_id: UUID,
@@ -206,7 +206,7 @@ def get_conversation(
     )
 
 
-@router.delete("/portal/conversations/{conversation_id}", status_code=204)
+@router.delete("/conversations/{conversation_id}", status_code=204)
 def delete_conversation(
     conversation_id: UUID,
     api_key: ApiKey = Depends(require_holder),
@@ -217,7 +217,7 @@ def delete_conversation(
 
 
 @router.post(
-    "/portal/conversations/{conversation_id}/fork",
+    "/conversations/{conversation_id}/fork",
     response_model=ConversationOut,
     status_code=201,
 )
@@ -233,7 +233,7 @@ def fork_conversation(
     return ConversationOut.model_validate(forked)
 
 
-@router.post("/portal/conversations/{conversation_id}/chat")
+@router.post("/conversations/{conversation_id}/chat")
 async def conversation_chat(
     conversation_id: UUID,
     payload: ConversationChatRequest,

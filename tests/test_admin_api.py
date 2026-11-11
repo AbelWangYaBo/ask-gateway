@@ -176,7 +176,7 @@ def factory_fixture(context: tuple[TestClient, sessionmaker]) -> sessionmaker:
 
 
 def _login(client: TestClient) -> str:
-    resp = client.post("/admin/auth/login", json={"password": ADMIN_PASSWORD})
+    resp = client.post("/api/admin/auth/login", json={"password": ADMIN_PASSWORD})
     assert resp.status_code == 200
     return resp.json()["token"]
 
@@ -187,7 +187,7 @@ def _auth(token: str) -> dict[str, str]:
 
 def _create_key(client: TestClient, token: str, holder: str, label: str) -> dict:
     resp = client.post(
-        "/admin/keys",
+        "/api/admin/keys",
         headers=_auth(token),
         json={"holder_name": holder, "label": label},
     )
@@ -211,7 +211,7 @@ def _ask(client: TestClient, plaintext: str, content: str) -> str:
 def test_login_wrong_password_is_401_and_persists_nothing(
     client: TestClient, factory_fixture: sessionmaker
 ) -> None:
-    resp = client.post("/admin/auth/login", json={"password": "wrong"})
+    resp = client.post("/api/admin/auth/login", json={"password": "wrong"})
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "invalid_credentials"
 
@@ -224,8 +224,8 @@ def test_login_wrong_password_is_401_and_persists_nothing(
 
 
 def test_admin_routes_require_token(client: TestClient) -> None:
-    assert client.get("/admin/keys").status_code == 401
-    resp = client.get("/admin/keys", headers=_auth("garbage"))
+    assert client.get("/api/admin/keys").status_code == 401
+    resp = client.get("/api/admin/keys", headers=_auth("garbage"))
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "unauthorized"
 
@@ -242,11 +242,11 @@ def test_expired_token_rejected(
         session.commit()
     finally:
         session.close()
-    assert client.get("/admin/keys", headers=_auth(token)).status_code == 401
+    assert client.get("/api/admin/keys", headers=_auth(token)).status_code == 401
 
 
 def test_login_success_returns_token_and_expiry(client: TestClient) -> None:
-    resp = client.post("/admin/auth/login", json={"password": ADMIN_PASSWORD})
+    resp = client.post("/api/admin/auth/login", json={"password": ADMIN_PASSWORD})
     body = resp.json()
     assert len(body["token"]) >= 32
     assert body["expires_at"].endswith("+00:00") or "T" in body["expires_at"]
@@ -263,33 +263,33 @@ def test_key_create_list_revoke_and_audit(client: TestClient) -> None:
     assert created["status"] == "active"
     key_id = created["id"]
 
-    listed = client.get("/admin/keys", headers=_auth(token)).json()
+    listed = client.get("/api/admin/keys", headers=_auth(token)).json()
     assert any(row["id"] == key_id and "key_hash" not in row for row in listed)
 
     # 吊销
-    resp = client.post(f"/admin/keys/{key_id}/revoke", headers=_auth(token))
+    resp = client.post(f"/api/admin/keys/{key_id}/revoke", headers=_auth(token))
     assert resp.status_code == 200
     assert resp.json()["status"] == "revoked"
     assert resp.json()["revoked_at"] is not None
 
     # 重复吊销幂等
-    assert client.post(f"/admin/keys/{key_id}/revoke", headers=_auth(token)).status_code == 200
+    assert client.post(f"/api/admin/keys/{key_id}/revoke", headers=_auth(token)).status_code == 200
 
     # 不存在的 Key
     missing = uuid.uuid4()
     assert client.post(
-        f"/admin/keys/{missing}/revoke", headers=_auth(token)
+        f"/api/admin/keys/{missing}/revoke", headers=_auth(token)
     ).status_code == 404
     assert client.patch(
-        f"/admin/keys/{missing}", headers=_auth(token), json={"rpm_limit": 1}
+        f"/api/admin/keys/{missing}", headers=_auth(token), json={"rpm_limit": 1}
     ).status_code == 404
 
     actions = client.get(
-        "/admin/audit-logs?action=key_create", headers=_auth(token)
+        "/api/admin/audit-logs?action=key_create", headers=_auth(token)
     ).json()
     assert actions["total"] >= 1
     revoke_logs = client.get(
-        "/admin/audit-logs?action=key_revoke", headers=_auth(token)
+        "/api/admin/audit-logs?action=key_revoke", headers=_auth(token)
     ).json()
     assert revoke_logs["total"] == 2
 
@@ -300,7 +300,7 @@ def test_key_quota_patch_partial_and_null_clears(client: TestClient) -> None:
     key_id = created["id"]
 
     resp = client.patch(
-        f"/admin/keys/{key_id}",
+        f"/api/admin/keys/{key_id}",
         headers=_auth(token),
         json={"rpm_limit": 99, "daily_budget_cents": 1234},
     )
@@ -312,13 +312,13 @@ def test_key_quota_patch_partial_and_null_clears(client: TestClient) -> None:
 
     # 显式 null 清除
     resp = client.patch(
-        f"/admin/keys/{key_id}", headers=_auth(token), json={"rpm_limit": None}
+        f"/api/admin/keys/{key_id}", headers=_auth(token), json={"rpm_limit": None}
     )
     assert resp.status_code == 200
     assert resp.json()["rpm_limit"] is None
     assert resp.json()["daily_budget_cents"] == 1234
 
-    logs = client.get("/admin/audit-logs?action=key_update", headers=_auth(token)).json()
+    logs = client.get("/api/admin/audit-logs?action=key_update", headers=_auth(token)).json()
     assert logs["items"][0]["detail"] == {"rpm_limit": None}
 
 
@@ -337,11 +337,11 @@ def test_request_list_filters_pagination_and_audit(
     _ask(client, li["plaintext"], "完全不同的天气预报问题")
 
     headers = _auth(token)
-    page = client.get("/admin/requests?page=1&page_size=2", headers=headers).json()
+    page = client.get("/api/admin/requests?page=1&page_size=2", headers=headers).json()
     assert page["total"] == 3
     assert len(page["items"]) == 2
     assert page["page"] == 1 and page["page_size"] == 2
-    page2 = client.get("/admin/requests?page=2&page_size=2", headers=headers).json()
+    page2 = client.get("/api/admin/requests?page=2&page_size=2", headers=headers).json()
     assert len(page2["items"]) == 1
     # 列表项不含全文，只带汇总字段
     assert "prompt_messages" not in page["items"][0]
@@ -349,37 +349,37 @@ def test_request_list_filters_pagination_and_audit(
 
     # 持有人精确筛选
     zhang_rows = client.get(
-        "/admin/requests", params={"holder_name": "张三"}, headers=headers
+        "/api/admin/requests", params={"holder_name": "张三"}, headers=headers
     ).json()
     assert zhang_rows["total"] == 2
     assert all(row["holder_name"] == "张三" for row in zhang_rows["items"])
 
     # key_id 筛选
     by_key = client.get(
-        "/admin/requests", params={"key_id": li["id"]}, headers=headers
+        "/api/admin/requests", params={"key_id": li["id"]}, headers=headers
     ).json()
     assert by_key["total"] == 1
 
     # 状态筛选
     succeeded = client.get(
-        "/admin/requests", params={"status": "succeeded"}, headers=headers
+        "/api/admin/requests", params={"status": "succeeded"}, headers=headers
     ).json()
     assert succeeded["total"] == 3
 
     # 关键词命中 prompt 全文（JSON  cast 检索）
     kw = client.get(
-        "/admin/requests", params={"keyword": "量子"}, headers=headers
+        "/api/admin/requests", params={"keyword": "量子"}, headers=headers
     ).json()
     assert kw["total"] == 2
     # final_answer 列存 FakeRunner 的最终答复（文本块内容在事件 payload 里）
     kw_answer = client.get(
-        "/admin/requests", params={"keyword": "模拟答案"}, headers=headers
+        "/api/admin/requests", params={"keyword": "模拟答案"}, headers=headers
     ).json()
     assert kw_answer["total"] == 3
 
     # 时间范围：未来日界 → 空
     empty = client.get(
-        "/admin/requests",
+        "/api/admin/requests",
         params={"date_from": "2099-01-01T00:00:00Z"},
         headers=headers,
     ).json()
@@ -387,7 +387,7 @@ def test_request_list_filters_pagination_and_audit(
 
     # 列表查看本身留痕
     views = client.get(
-        "/admin/audit-logs?action=audit_view", headers=headers
+        "/api/admin/audit-logs?action=audit_view", headers=headers
     ).json()
     assert views["total"] >= 1
 
@@ -397,7 +397,7 @@ def test_request_detail_timeline_thinking_usage(client: TestClient) -> None:
     key = _create_key(client, token, "王五", "个人 Key")
     request_id = _ask(client, key["plaintext"], "详情时间线问题")
 
-    resp = client.get(f"/admin/requests/{request_id}", headers=_auth(token))
+    resp = client.get(f"/api/admin/requests/{request_id}", headers=_auth(token))
     assert resp.status_code == 200
     body = resp.json()
     assert body["request_id"] == request_id
@@ -423,11 +423,11 @@ def test_request_detail_timeline_thinking_usage(client: TestClient) -> None:
 
     # 不存在
     assert client.get(
-        f"/admin/requests/{uuid.uuid4()}", headers=_auth(token)
+        f"/api/admin/requests/{uuid.uuid4()}", headers=_auth(token)
     ).status_code == 404
 
     logs = client.get(
-        "/admin/audit-logs?action=audit_view", headers=_auth(token)
+        "/api/admin/audit-logs?action=audit_view", headers=_auth(token)
     ).json()
     assert any(row["target_id"] == request_id for row in logs["items"])
 
@@ -437,7 +437,7 @@ def test_export_full_json_redacts_key_hash(client: TestClient) -> None:
     key = _create_key(client, token, "赵六", "合规导出 Key")
     request_id = _ask(client, key["plaintext"], "导出用问题")
 
-    resp = client.get(f"/admin/requests/{request_id}/export", headers=_auth(token))
+    resp = client.get(f"/api/admin/requests/{request_id}/export", headers=_auth(token))
     assert resp.status_code == 200
     disposition = resp.headers["content-disposition"]
     assert "attachment" in disposition
@@ -454,7 +454,7 @@ def test_export_full_json_redacts_key_hash(client: TestClient) -> None:
     assert "plaintext" not in body["api_key"]
 
     logs = client.get(
-        "/admin/audit-logs?action=audit_export", headers=_auth(token)
+        "/api/admin/audit-logs?action=audit_export", headers=_auth(token)
     ).json()
     assert logs["total"] == 1
     assert logs["items"][0]["target_id"] == request_id
@@ -479,7 +479,7 @@ def test_usage_summary_all_group_bys(client: TestClient) -> None:
         ("day", None),
     ):
         body = client.get(
-            "/admin/usage/summary", params={"group_by": group_by}, headers=headers
+            "/api/admin/usage/summary", params={"group_by": group_by}, headers=headers
         ).json()
         assert body["group_by"] == group_by
         rows = body["rows"]
@@ -501,7 +501,7 @@ def test_usage_summary_all_group_bys(client: TestClient) -> None:
 
     # 非法分组 → 400
     resp = client.get(
-        "/admin/usage/summary", params={"group_by": "hour"}, headers=headers
+        "/api/admin/usage/summary", params={"group_by": "hour"}, headers=headers
     )
     assert resp.status_code == 400
 
@@ -512,11 +512,11 @@ def test_usage_summary_all_group_bys(client: TestClient) -> None:
 def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
     token = _login(client)
     headers = _auth(token)
-    existing = client.get("/admin/pricing", headers=headers).json()
+    existing = client.get("/api/admin/pricing", headers=headers).json()
     assert len(existing) == 1
 
     created = client.put(
-        "/admin/pricing",
+        "/api/admin/pricing",
         headers=headers,
         json={
             "model": MODEL,
@@ -535,7 +535,7 @@ def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
 
     # 同模型同时段冲突
     conflict = client.put(
-        "/admin/pricing",
+        "/api/admin/pricing",
         headers=headers,
         json={
             "model": MODEL,
@@ -553,7 +553,7 @@ def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
 
     # 第二条全时段规则与种子冲突
     all_day_conflict = client.put(
-        "/admin/pricing",
+        "/api/admin/pricing",
         headers=headers,
         json={
             "model": MODEL,
@@ -567,7 +567,7 @@ def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
 
     # 窗口语义非法 → 400
     bad_window = client.put(
-        "/admin/pricing",
+        "/api/admin/pricing",
         headers=headers,
         json={
             "model": MODEL,
@@ -582,7 +582,7 @@ def test_pricing_create_conflict_and_validation(client: TestClient) -> None:
     assert bad_window.status_code == 400
 
     logs = client.get(
-        "/admin/audit-logs?action=pricing_update", headers=headers
+        "/api/admin/audit-logs?action=pricing_update", headers=headers
     ).json()
     assert logs["total"] == 1
 
@@ -597,7 +597,7 @@ def test_audit_logs_pagination(client: TestClient) -> None:
     headers = _auth(token)
 
     page = client.get(
-        "/admin/audit-logs?page=1&page_size=2", headers=headers
+        "/api/admin/audit-logs?page=1&page_size=2", headers=headers
     ).json()
     assert page["page_size"] == 2
     assert len(page["items"]) == 2
@@ -612,7 +612,7 @@ def test_dashboard_metrics(client: TestClient) -> None:
     _ask(client, key["plaintext"], "看板问题一")
     _ask(client, key["plaintext"], "看板问题二")
 
-    body = client.get("/admin/dashboard", headers=_auth(token)).json()
+    body = client.get("/api/admin/dashboard", headers=_auth(token)).json()
     assert body["total_requests"] == 2
     assert body["succeeded"] == 2
     assert body["success_rate"] == 1.0
@@ -651,7 +651,7 @@ def test_dashboard_empty_database(
     try:
         with TestClient(app) as bare:
             token = _login(bare)
-            body = bare.get("/admin/dashboard", headers=_auth(token)).json()
+            body = bare.get("/api/admin/dashboard", headers=_auth(token)).json()
             assert body["total_requests"] == 0
             assert body["success_rate"] == 0.0
             assert body["p50_latency_ms"] is None

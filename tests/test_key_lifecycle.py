@@ -85,19 +85,19 @@ def client(db, engine, monkeypatch, tmp_path) -> TestClient:
 
 
 def _auth(client: TestClient) -> dict[str, str]:
-    token = client.post("/admin/auth/login", json={"password": "lc-pw"}).json()["token"]
+    token = client.post("/api/admin/auth/login", json={"password": "lc-pw"}).json()["token"]
     return {"X-Admin-Token": token}
 
 
 def test_verify_key_identifies_platform_and_upstream(client):
     headers = _auth(client)
     created = client.post(
-        "/admin/keys", json={"holder_name": "abel", "label": "ver"}, headers=headers
+        "/api/admin/keys", json={"holder_name": "abel", "label": "ver"}, headers=headers
     ).json()
     plaintext = created["plaintext"]
 
     # 平台 Key：kind=platform，带持有人与状态
-    out = client.post("/admin/keys/verify", json={"plaintext": plaintext}, headers=headers)
+    out = client.post("/api/admin/keys/verify", json={"plaintext": plaintext}, headers=headers)
     assert out.status_code == 200
     body = out.json()
     assert body["kind"] == "platform"
@@ -105,7 +105,7 @@ def test_verify_key_identifies_platform_and_upstream(client):
 
     # 未知 Key
     out = client.post(
-        "/admin/keys/verify", json={"plaintext": "sk-not-exists-anywhere"}, headers=headers
+        "/api/admin/keys/verify", json={"plaintext": "sk-not-exists-anywhere"}, headers=headers
     )
     assert out.json()["kind"] == "unknown"
 
@@ -123,7 +123,7 @@ def test_verify_upstream_key_via_admin_box(db, client):
         s.commit()
 
     out = client.post(
-        "/admin/keys/verify", json={"plaintext": "sk-up-verify-abc123"}, headers=headers
+        "/api/admin/keys/verify", json={"plaintext": "sk-up-verify-abc123"}, headers=headers
     )
     body = out.json()
     assert body["kind"] == "upstream"
@@ -134,8 +134,8 @@ def test_verify_upstream_key_via_admin_box(db, client):
 def test_requests_filter_and_usage_group_by_upstream(client):
     headers = _auth(client)
     # 无数据时接口可用即可（分组/筛选 SQL 已被全量套件其他路径覆盖）
-    resp = client.get("/admin/requests", headers=headers)
+    resp = client.get("/api/admin/requests", headers=headers)
     assert resp.status_code == 200
-    usage = client.get("/admin/usage/summary", params={"group_by": "upstream_key"}, headers=headers)
+    usage = client.get("/api/admin/usage/summary", params={"group_by": "upstream_key"}, headers=headers)
     assert usage.status_code == 200
     assert usage.json()["group_by"] == "upstream_key"

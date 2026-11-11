@@ -242,7 +242,7 @@ def client(db, monkeypatch, tmp_path) -> Iterator[TestClient]:
 
 
 def _auth(client: TestClient) -> dict[str, str]:
-    token = client.post("/admin/auth/login", json={"password": "rest-pw"}).json()["token"]
+    token = client.post("/api/admin/auth/login", json={"password": "rest-pw"}).json()["token"]
     return {"X-Admin-Token": token}
 
 
@@ -252,7 +252,7 @@ def test_upstream_key_crud_flow(client) -> None:
 
     # 创建：响应只含指纹/preview，绝无明文
     created = c.post(
-        "/admin/upstream-keys",
+        "/api/admin/upstream-keys",
         json={"label": "main", "plaintext": "sk-crud-test-key"},
         headers=headers,
     )
@@ -268,7 +268,7 @@ def test_upstream_key_crud_flow(client) -> None:
 
     # 重复添加同一明文 → 409
     dup = c.post(
-        "/admin/upstream-keys",
+        "/api/admin/upstream-keys",
         json={"label": "dup", "plaintext": "sk-crud-test-key"},
         headers=headers,
     )
@@ -276,17 +276,17 @@ def test_upstream_key_crud_flow(client) -> None:
 
     # 停用：池组即时移除
     patched = c.patch(
-        f"/admin/upstream-keys/{key_id}", json={"is_active": False}, headers=headers
+        f"/api/admin/upstream-keys/{key_id}", json={"is_active": False}, headers=headers
     )
     assert patched.status_code == 200 and patched.json()["is_active"] is False
     assert pool._labels == []
 
     # 删除：204；未授权访问 401
-    assert c.delete(f"/admin/upstream-keys/{key_id}", headers=headers).status_code == 204
-    assert c.get("/admin/upstream-keys").status_code == 401
+    assert c.delete(f"/api/admin/upstream-keys/{key_id}", headers=headers).status_code == 204
+    assert c.get("/api/admin/upstream-keys").status_code == 401
 
     # 管理操作日志留痕
-    token = c.post("/admin/auth/login", json={"password": "rest-pw"}).json()["token"]
-    logs = c.get("/admin/audit-logs", headers={"X-Admin-Token": token}).json()
+    token = c.post("/api/admin/auth/login", json={"password": "rest-pw"}).json()["token"]
+    logs = c.get("/api/admin/audit-logs", headers={"X-Admin-Token": token}).json()
     actions = {item["action"] for item in logs["items"]}
     assert {"upstream_key.create", "upstream_key.update", "upstream_key.delete"} <= actions

@@ -79,7 +79,7 @@ def _client_ip(request: Request) -> str | None:
 # ---- 认证 ----
 
 
-@router.post("/admin/auth/login", response_model=LoginResponse)
+@router.post("/api/admin/auth/login", response_model=LoginResponse)
 def login(
     payload: LoginRequest,
     request: Request,
@@ -103,7 +103,7 @@ def login(
 
 
 @router.get(
-    "/admin/keys",
+    "/api/admin/keys",
     response_model=list[KeyOut],
     dependencies=[Depends(require_admin)],
 )
@@ -112,7 +112,7 @@ def list_keys(session: Session = Depends(session_scope)) -> list[KeyOut]:
 
 
 @router.post(
-    "/admin/keys",
+    "/api/admin/keys",
     response_model=KeyCreatedOut,
     status_code=201,
     dependencies=[Depends(require_admin)],
@@ -129,7 +129,7 @@ def create_key(
 
 
 @router.post(
-    "/admin/keys/{key_id}/revoke",
+    "/api/admin/keys/{key_id}/revoke",
     response_model=KeyOut,
     dependencies=[Depends(require_admin)],
 )
@@ -143,7 +143,7 @@ def revoke_key(
 
 
 @router.patch(
-    "/admin/keys/{key_id}",
+    "/api/admin/keys/{key_id}",
     response_model=KeyOut,
     dependencies=[Depends(require_admin)],
 )
@@ -160,7 +160,7 @@ def update_key_quota(
 
 
 @router.post(
-    "/admin/keys/verify",
+    "/api/admin/keys/verify",
     response_model=KeyVerifyResultOut,
     dependencies=[Depends(require_admin)],
 )
@@ -199,7 +199,7 @@ def verify_key(
 
 
 @router.get(
-    "/admin/requests",
+    "/api/admin/requests",
     response_model=RequestPage,
     dependencies=[Depends(require_admin)],
 )
@@ -243,7 +243,7 @@ def list_requests(
 
 
 @router.get(
-    "/admin/requests/{request_id}",
+    "/api/admin/requests/{request_id}",
     response_model=RequestDetailOut,
     dependencies=[Depends(require_admin)],
 )
@@ -259,7 +259,7 @@ def get_request(
 
 
 @router.get(
-    "/admin/requests/{request_id}/export",
+    "/api/admin/requests/{request_id}/export",
     dependencies=[Depends(require_admin)],
 )
 def export_request(
@@ -282,7 +282,7 @@ def export_request(
 
 
 @router.get(
-    "/admin/usage/summary",
+    "/api/admin/usage/summary",
     response_model=UsageSummaryOut,
     dependencies=[Depends(require_admin)],
 )
@@ -333,7 +333,7 @@ def usage_summary(
 
 
 @router.get(
-    "/admin/pricing",
+    "/api/admin/pricing",
     response_model=list[PricingRuleOut],
     dependencies=[Depends(require_admin)],
 )
@@ -344,7 +344,7 @@ def list_pricing(session: Session = Depends(session_scope)) -> list[PricingRuleO
 
 
 @router.put(
-    "/admin/pricing",
+    "/api/admin/pricing",
     response_model=PricingRuleOut,
     status_code=201,
     dependencies=[Depends(require_admin)],
@@ -362,7 +362,7 @@ def create_pricing_rule(
 
 
 @router.get(
-    "/admin/audit-logs",
+    "/api/admin/audit-logs",
     response_model=AuditLogPage,
     dependencies=[Depends(require_admin)],
 )
@@ -385,7 +385,7 @@ def list_audit_logs(
 
 
 @router.get(
-    "/admin/dashboard",
+    "/api/admin/dashboard",
     response_model=DashboardOut,
     dependencies=[Depends(require_admin)],
 )
@@ -406,7 +406,7 @@ def _reconcile_pool(request: Request) -> None:
 
 
 @router.get(
-    "/admin/upstream-keys",
+    "/api/admin/upstream-keys",
     response_model=list[UpstreamKeyOut],
     dependencies=[Depends(require_admin)],
 )
@@ -415,7 +415,7 @@ def list_upstream_keys(session: Session = Depends(session_scope)) -> list[Upstre
 
 
 @router.post(
-    "/admin/upstream-keys",
+    "/api/admin/upstream-keys",
     response_model=UpstreamKeyOut,
     status_code=201,
     dependencies=[Depends(require_admin)],
@@ -440,7 +440,7 @@ def create_upstream_key(
 
 
 @router.patch(
-    "/admin/upstream-keys/{key_id}",
+    "/api/admin/upstream-keys/{key_id}",
     response_model=UpstreamKeyOut,
     dependencies=[Depends(require_admin)],
 )
@@ -464,7 +464,7 @@ def update_upstream_key(
 
 
 @router.delete(
-    "/admin/upstream-keys/{key_id}",
+    "/api/admin/upstream-keys/{key_id}",
     status_code=204,
     dependencies=[Depends(require_admin)],
 )

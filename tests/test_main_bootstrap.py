@@ -92,13 +92,13 @@ def test_application_lifespan_routes_and_shutdown(
         assert client.get("/healthz").status_code == 200
         # SPA dist 缺失时挂载被跳过：根路径 404，且不吞 API 路由
         assert client.get("/").status_code == 404
-        assert client.get("/admin/keys").status_code == 401
+        assert client.get("/api/admin/keys").status_code == 401
 
         # 完整组装链路上的管理登录（临时库已建表）
-        ok = client.post("/admin/auth/login", json={"password": "boot-pw"})
+        ok = client.post("/api/admin/auth/login", json={"password": "boot-pw"})
         assert ok.status_code == 200
         token = ok.json()["token"]
-        authed = client.get("/admin/keys", headers={"X-Admin-Token": token})
+        authed = client.get("/api/admin/keys", headers={"X-Admin-Token": token})
         assert authed.status_code == 200
 
     # 优雅关停后 reaper 退出
@@ -126,4 +126,4 @@ def test_spa_mounted_with_index_fallback(
 
         # API 路由优先于 SPA 挂载，不会被兜底吞掉
         assert client.get("/healthz").status_code == 200
-        assert client.get("/admin/keys").status_code == 401
+        assert client.get("/api/admin/keys").status_code == 401
