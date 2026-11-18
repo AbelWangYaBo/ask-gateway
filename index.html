@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ask-gateway · 多租户问答网关</title>
+<meta name="description" content="基于 DeepSeek Harness (DSH) 的多租户问答网关：OpenAI 兼容 API、全链路审计、峰谷计费、用户门户。">
+<style>
+:root {
+  --ledger-deep: #0a1512;
+  --ledger: #0f2019;
+  --ledger-raised: #142a21;
+  --line: #234338;
+  --line-soft: #1a3329;
+  --ink: #dcebe2;
+  --ink-dim: #8fae9f;
+  --ink-faint: #5c7a6c;
+  --amber: #e8b04b;
+  --amber-soft: rgba(232, 176, 75, 0.14);
+  --mint: #7fd4a8;
+  --paper: #f4efe4;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --serif: "Songti SC", "Noto Serif SC", "SimSun", serif;
+  --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--ledger-deep);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.75;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+/* 账本网格底纹 */
+body::before {
+  content: "";
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 56px 56px;
+  opacity: 0.35;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 30%, transparent 100%);
+}
+main { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+/* ---------- 入场 ---------- */
+@keyframes rise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+.reveal { opacity: 0; animation: rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.d1 { animation-delay: 0.08s; } .d2 { animation-delay: 0.2s; } .d3 { animation-delay: 0.34s; }
+.d4 { animation-delay: 0.5s; } .d5 { animation-delay: 0.66s; } .d6 { animation-delay: 0.82s; }
+@media (prefers-reduced-motion: reduce) {
+  .reveal { animation: none; opacity: 1; }
+  .pulse, .blink { animation: none !important; }
+}
+
+/* ---------- Hero ---------- */
+header { padding: 96px 0 72px; border-bottom: 1px solid var(--line); position: relative; }
+.kicker {
+  font-family: var(--mono); font-size: 13px; letter-spacing: 0.22em;
+  color: var(--amber); text-transform: uppercase; margin-bottom: 26px;
+}
+.kicker::before { content: "▸ "; }
+h1 {
+  font-family: var(--serif); font-weight: 900;
+  font-size: clamp(44px, 7.5vw, 84px); line-height: 1.12;
+  letter-spacing: 0.01em;
+}
+h1 .thin { color: var(--ink-dim); font-weight: 400; }
+.tagline {
+  font-family: var(--serif); font-size: clamp(18px, 2.6vw, 24px);
+  color: var(--ink-dim); margin-top: 18px; max-width: 34em;
+}
+.tagline em { font-style: normal; color: var(--amber); border-bottom: 1px dashed rgba(232,176,75,.5); }
+.hero-row { display: flex; gap: 40px; margin-top: 48px; flex-wrap: wrap; align-items: stretch; }
+
+/* 终端块 */
+.terminal {
+  flex: 1.3; min-width: 320px;
+  background: var(--ledger); border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.45);
+}
+.terminal-bar {
+  display: flex; align-items: center; gap: 7px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line-soft);
+  background: var(--ledger-raised);
+}
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.dot.a { background: #c85c4a; } .dot.b { background: var(--amber); } .dot.c { background: #4a9c6d; }
+.terminal-title { margin-left: 8px; font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+.terminal pre {
+  padding: 20px 22px; font-family: var(--mono); font-size: 13.5px; line-height: 1.9;
+  color: var(--ink-dim); overflow-x: auto;
+}
+.terminal .cmd { color: var(--ink); }
+.terminal .flag { color: var(--mint); }
+.terminal .str { color: var(--amber); }
+.terminal .cmt { color: var(--ink-faint); }
+
+.hero-aside { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 14px; justify-content: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 13px 22px; border-radius: 8px; text-decoration: none;
+  font-size: 15px; font-weight: 600; transition: transform .18s, box-shadow .18s;
+}
+.btn-primary { background: var(--amber); color: #1c1206; }
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(232,176,75,.3); }
+.btn-ghost { border: 1px solid var(--line); color: var(--ink-dim); }
+.btn-ghost:hover { border-color: var(--amber); color: var(--amber); }
+.hero-facts { display: flex; gap: 28px; margin-top: 8px; flex-wrap: wrap; }
+.fact b { display: block; font-family: var(--mono); font-size: 26px; color: var(--ink); font-weight: 600; }
+.fact span { font-size: 12.5px; color: var(--ink-faint); letter-spacing: 0.05em; }
+
+/* ---------- 章节题 ---------- */
+section { padding: 78px 0 8px; }
+.sec-head { display: flex; align-items: baseline; gap: 18px; margin-bottom: 44px; }
+.sec-no { font-family: var(--mono); font-size: 14px; color: var(--amber); letter-spacing: 0.1em; }
+.sec-head h2 { font-family: var(--serif); font-weight: 900; font-size: clamp(26px, 4vw, 38px); }
+.sec-head .rule { flex: 1; height: 1px; background: var(--line); align-self: center; }
+
+/* ---------- 时间线 ---------- */
+.timeline { position: relative; padding-left: 46px; }
+.timeline::before {
+  content: ""; position: absolute; left: 13px; top: 8px; bottom: 8px; width: 2px;
+  background: linear-gradient(var(--line) 60%, var(--amber) 60.5%);
+}
+.tl-item { position: relative; padding: 0 0 40px 22px; }
+.tl-item::before {
+  content: ""; position: absolute; left: -40px; top: 8px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--ledger-deep); border: 2px solid var(--ink-faint);
+}
+.tl-item.hot::before { border-color: var(--amber); background: var(--amber); }
+.tl-item.hot::after {
+  content: ""; position: absolute; left: -44px; top: 4px; width: 20px; height: 20px;
+  border-radius: 50%; border: 1px solid var(--amber); opacity: 0;
+  animation: pulse 2.4s ease-out infinite;
+}
+@keyframes pulse { 0% { transform: scale(.5); opacity: .8; } 100% { transform: scale(1.7); opacity: 0; } }
+.tl-tag {
+  font-family: var(--mono); font-size: 12px; color: var(--ink-faint);
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
+.tl-item.hot .tl-tag { color: var(--amber); }
+.tl-item h3 { font-family: var(--serif); font-size: 21px; font-weight: 700; margin: 4px 0 8px; }
+.tl-item p { color: var(--ink-dim); max-width: 46em; }
+.tl-item p code {
+  font-family: var(--mono); font-size: 0.88em; color: var(--mint);
+  background: var(--ledger-raised); padding: 2px 7px; border-radius: 5px;
+}
+
+/* ---------- 三面能力 ---------- */
+.faces { display: grid; grid-template-columns: 1.25fr 1fr; gap: 22px; }
+.face {
+  border: 1px solid var(--line); border-radius: 12px; padding: 30px 28px;
+  background: linear-gradient(160deg, var(--ledger-raised), var(--ledger));
+  position: relative; overflow: hidden; transition: border-color .25s, transform .25s;
+}
+.face:hover { border-color: var(--amber); transform: translateY(-3px); }
+.face.wide { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1.1fr; gap: 26px; align-items: center; }
+.face-icon { font-family: var(--mono); font-size: 13px; color: var(--amber); letter-spacing: 0.16em; margin-bottom: 14px; }
+.face h3 { font-family: var(--serif); font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+.face p { color: var(--ink-dim); font-size: 14.5px; }
+.face ul { list-style: none; margin-top: 14px; }
+.face li {
+  padding: 7px 0 7px 24px; font-size: 14px; color: var(--ink-dim);
+  border-bottom: 1px dashed var(--line-soft); position: relative;
+}
+.face li:last-child { border-bottom: 0; }
+.face li::before { content: "✓"; position: absolute; left: 2px; color: var(--mint); font-size: 13px; }
+.face pre {
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.8; color: var(--ink-dim);
+  background: var(--ledger-deep); border: 1px solid var(--line-soft); border-radius: 8px;
+  padding: 16px 18px; overflow-x: auto;
+}
+
+/* ---------- 峰谷条 ---------- */
+.hours { display: flex; gap: 3px; margin: 26px 0 10px; }
+.hour {
+  flex: 1; height: 44px; border-radius: 4px;
+  background: var(--ledger-raised); border: 1px solid var(--line-soft);
+  position: relative; transition: transform .15s;
+}
+.hour.peak { background: var(--amber-soft); border-color: var(--amber); }
+.hour.peak::after {
+  content: ""; position: absolute; left: 10%; right: 10%; bottom: 8px; height: 3px;
+  background: var(--amber); border-radius: 2px;
+}
+.hour:hover { transform: translateY(-3px); }
+.hour-labels { display: flex; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); margin-bottom: 6px; }
+.hour-labels span { flex: 1; text-align: left; }
+.hour-labels span:nth-child(n+2) { text-align: right; }
+.pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; margin-top: 30px; }
+.p-card { border: 1px solid var(--line); border-radius: 10px; padding: 22px; background: var(--ledger); }
+.p-card b { font-family: var(--serif); font-size: 17px; display: block; margin-bottom: 8px; }
+.p-card b::before { content: "◇ "; color: var(--amber); }
+.p-card p { font-size: 13.5px; color: var(--ink-dim); }
+.p-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-family: var(--mono); font-size: 12.5px; }
+.p-table th, .p-table td { text-align: left; padding: 7px 10px; border-bottom: 1px dashed var(--line-soft); color: var(--ink-dim); }
+.p-table th { color: var(--ink-faint); font-weight: 500; letter-spacing: 0.06em; }
+.p-table td:last-child, .p-table th:last-child { text-align: right; }
+.p-table .hi { color: var(--amber); }
+
+/* ---------- 页脚 ---------- */
+footer {
+  margin-top: 90px; border-top: 1px solid var(--line); padding: 40px 0 56px;
+  display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+}
+footer p { color: var(--ink-faint); font-size: 13px; max-width: 44em; }
+footer .f-links { display: flex; gap: 22px; }
+footer a { color: var(--ink-dim); text-decoration: none; font-family: var(--mono); font-size: 13px; }
+footer a:hover { color: var(--amber); }
+
+@media (max-width: 860px) {
+  .faces { grid-template-columns: 1fr; }
+  .face.wide { grid-template-columns: 1fr; }
+  header { padding-top: 64px; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <div class="kicker reveal d1">DeepSeek Harness · Multi-tenant Gateway</div>
+  <h1 class="reveal d2">ask-gateway<br><span class="thin">多租户问答网关</span></h1>
+  <p class="tagline reveal d3">对外是 OpenAI 兼容接口，对内是一本账：<em>每一次问答的完整链路、思考过程、联网搜索与费用</em>，全部落库可追溯。</p>
+  <div class="hero-row">
+    <div class="terminal reveal d4">
+      <div class="terminal-bar">
+        <span class="dot a"></span><span class="dot b"></span><span class="dot c"></span>
+        <span class="terminal-title">bash — 流式问答</span>
+      </div>
+<pre><span class="cmt"># 平台 Key 调用，与 OpenAI SDK 完全兼容</span>
+<span class="cmd">curl</span> http://127.0.0.1:8000/v1/chat/completions \
+  <span class="flag">-H</span> <span class="str">"Authorization: Bearer sk-ask-..."</span> \
+  <span class="flag">-d</span> <span class="str">'{"model":"deepseek-flash",
+       "stream":true,
+       "messages":[{"role":"user",
+       "content":"今天有什么科技新闻？"}]}'</span>
+
+<span class="cmt"># SSE 返回内容增量 + 思考过程 + x-dsh-event 实时进度</span></pre>
+    </div>
+    <div class="hero-aside reveal d5">
+      <a class="btn btn-primary" href="https://github.com/AbelWangYaBo/ask-gateway">⌥ 查看源码</a>
+      <a class="btn btn-ghost" href="https://github.com/AbelWangYaBo/ask-gateway#本地开发-macos--linux">快速开始</a>
+      <div class="hero-facts">
+        <div class="fact"><b>2</b><span>上游模型</span></div>
+        <div class="fact"><b>11</b><span>审计数据表</span></div>
+        <div class="fact"><b>0</b><span>越权工具面</span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- 01 一次请求的台账 -->
+<section id="timeline">
+  <div class="sec-head reveal"><span class="sec-no">01</span><h2>一次请求，一条完整台账</h2><span class="rule"></span></div>
+  <div class="timeline">
+    <div class="tl-item reveal">
+      <div class="tl-tag">t₀ · queued</div>
+      <h3>凭 Key 入账</h3>
+      <p>请求持平台 Key 进入网关，审计行立即建立——持有人、模型、客户端 IP、完整 prompt。配额三重闸门依次校验：RPM、日预算、并发。</p>
+    </div>
+    <div class="tl-item reveal">
+      <div class="tl-tag">t₁ · acquired</div>
+      <h3>有界弹性 runtime 池</h3>
+      <p>从 DSH 常驻进程池借出执行位。上游 Key 按组轮换、熔断隔离；<code>deepseek-flash</code> 与 <code>deepseek-v4-pro</code> 全部经由官方 Harness SDK 驱动。</p>
+    </div>
+    <div class="tl-item hot reveal">
+      <div class="tl-tag">t₂ · thinking / web_search</div>
+      <h3>过程事件逐条落库</h3>
+      <p>思考文本、联网搜索调用、工具事件按序号完整入库，同时以 <code>x-dsh-event</code> 实时推给流式客户端——过程不空白、事后可回放。</p>
+    </div>
+    <div class="tl-item reveal">
+      <div class="tl-tag">t₃ · text</div>
+      <h3>最终回答与多轮对话</h3>
+      <p>回答全文归档，并自动归入该用户的对话体系：API 与门户 chatbot 同源，支持从任意消息点反复分叉平行分支。</p>
+    </div>
+    <div class="tl-item hot reveal">
+      <div class="tl-tag">t₄ · usage → cost</div>
+      <h3>计费快照冻结</h3>
+      <p>按 token 分类（命中/未命中输入、输出、搜索次数）逐项计价，<b>定价快照随账入库</b>——此后改价、停用、加优惠，历史账单永远不变。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 02 三面 -->
+<section id="faces">
+  <div class="sec-head reveal"><span class="sec-no">02</span><h2>三个界面，同一本账</h2><span class="rule"></span></div>
+  <div class="faces">
+    <div class="face wide reveal">
+      <div>
+        <div class="face-icon">/admin · 管理控制台</div>
+        <h3>管理员看全局</h3>
+        <p>看板、请求审计、费用报表与 CSV 导出；API Key 全生命周期——明文仅展示一次、库存哈希、启停与到期、配额三参、Key 验证可比对是哪一个。</p>
+        <ul>
+          <li>上游 Key AES-GCM 加密入库，增删改即时生效不重启</li>
+          <li>审计检索：全文、事件时间线、思考过程逐条可查</li>
+          <li>管理员操作全量留痕</li>
+        </ul>
+      </div>
+      <pre>费用报表        按天 / Key / 模型 / 上游 Key 分组
+时间范围        当天 · 7天 · 30天 · 本周 · 本月 · 自定
+导出            CSV 全量明细
+请求审计        timeline → thinking → search → usage</pre>
+    </div>
+    <div class="face reveal">
+      <div class="face-icon">/portal · 用户门户</div>
+      <h3>用户看自己</h3>
+      <p>同一把 API Key 登录门户：自己的请求记录、用量与消耗；内置流式 chatbot，联网搜索一键开关，对话持久化、任意消息点反复分叉。</p>
+    </div>
+    <div class="face reveal">
+      <div class="face-icon">/v1 · OpenAI 兼容</div>
+      <h3>调用方零改造</h3>
+      <p>OpenAI SDK / 任意兼容客户端换 base_url 即用：非流式与 SSE、全量 messages 无状态多轮、usage 明细（含缓存命中与思考 token）。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 03 定价 -->
+<section id="pricing">
+  <div class="sec-head reveal"><span class="sec-no">03</span><h2>峰谷计价，权重覆盖</h2><span class="rule"></span></div>
+  <div class="reveal">
+    <div class="hour-labels"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+    <div class="hours" id="hours"></div>
+    <p style="font-size:13px;color:var(--ink-faint);font-family:var(--mono)">■ 琥珀 = 高峰时段（工作日 9–12、14–18，北京时间）· 其余空闲，周末全日空闲 · 空闲价 = 高峰价 ½</p>
+    <div class="pricing-grid">
+      <div class="p-card">
+        <b>官方 2026 报价内置</b>
+        <table class="p-table">
+          <tr><th>元 / 百万token</th><th>空闲</th><th>高峰</th></tr>
+          <tr><td>flash 输入·未命中</td><td>1.0</td><td class="hi">2.0</td></tr>
+          <tr><td>flash 输入·命中</td><td>0.02</td><td class="hi">0.04</td></tr>
+          <tr><td>flash 输出</td><td>4.5</td><td class="hi">9.0</td></tr>
+          <tr><td>pro 输出</td><td>13.5</td><td class="hi">27.0</td></tr>
+          <tr><td>搜索（千次）</td><td colspan="2" style="text-align:right">5.0</td></tr>
+        </table>
+      </div>
+      <div class="p-card">
+        <b>权重 · priority</b>
+        <p>同时刻多条规则匹配时大者胜：常规价权重 0，临时优惠权重 1——优惠期整体覆盖常规，想保留峰谷差异就各档分别建高权重规则。</p>
+      </div>
+      <div class="p-card">
+        <b>周期 · effective_from / to</b>
+        <p>官方发调价公告，立刻录入未来价，到点自动切换；临时优惠到期自动回落。不用人工守着时间改价，也不会忘了收尾。</p>
+      </div>
+      <div class="p-card">
+        <b>快照冻结</b>
+        <p>每条 usage 落库时冻结当时规则全文。历史费用只读——若需修正，走专门的重算脚本，永远不会因为改规则而悄悄变账。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>ask-gateway · FastAPI + DeepSeek Harness SDK + SQLAlchemy/Alembic + Vue 3 · 本页为静态介绍，源码与部署见仓库。<br>纯问答 + 联网搜索；shell / 文件系统 / 子代理 / 工作流工具在 DSH profile 层禁用。</p>
+  <div class="f-links">
+    <a href="https://github.com/AbelWangYaBo/ask-gateway">GitHub</a>
+    <a href="https://github.com/AbelWangYaBo/ask-gateway/blob/main/README.md">README</a>
+    <a href="https://api-docs.deepseek.com/zh-cn/quick_start/pricing">DeepSeek 定价</a>
+  </div>
+</footer>
+
+</main>
+<script>
+  // 峰谷小时条：工作日 9-12、14-18 为高峰
+  const hours = document.getElementById('hours');
+  for (let h = 0; h < 24; h++) {
+    const el = document.createElement('div');
+    el.className = 'hour' + (((h >= 9 && h < 12) || (h >= 14 && h < 18)) ? ' peak' : '');
+    el.title = `${String(h).padStart(2, '0')}:00 ${((h >= 9 && h < 12) || (h >= 14 && h < 18)) ? '高峰' : '空闲'}`;
+    hours.appendChild(el);
+  }
+</script>
+</body>
+</html>
